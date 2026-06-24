@@ -1,15 +1,11 @@
 import type { NextConfig } from "next";
-import { execSync } from "child_process";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-// Ensure Playwright Chromium and its system dependencies are present
-// before the production server starts.
-try {
-  execSync("npx playwright install chromium", { stdio: "pipe", timeout: 300000 });
-  execSync("npx playwright install-deps chromium", { stdio: "pipe", timeout: 300000 });
-} catch {
-  // Ignore install errors during build; runtime handler will retry if needed.
-}
-
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  turbopack: {
+    root: dirname(fileURLToPath(import.meta.url)),
+  },
+};
 
 export default nextConfig;

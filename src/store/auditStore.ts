@@ -8,6 +8,7 @@ import type {
 } from "@/lib/types";
 
 const STORAGE_KEY = "opencode_api_key";
+const MAX_LOG_ENTRIES = 2000;
 
 // Non-reactive runtime handles (kept outside React/store state).
 let abortController: AbortController | null = null;
@@ -32,6 +33,8 @@ type AuditState = {
   report: string;
   reportOpen: boolean;
   error: string;
+  // ----- debug mode (toggleable live during an audit) -----
+  debugMode: boolean;
 
   // ----- actions -----
   hydrate: () => void;
@@ -41,13 +44,14 @@ type AuditState = {
   setLanguage: (l: AuditLanguage) => void;
   setUrl: (v: string) => void;
   setReportOpen: (open: boolean) => void;
+  setDebugMode: (v: boolean) => void;
   fetchModels: () => Promise<void>;
   runAudit: () => Promise<void>;
 };
 
 export const useAuditStore = create<AuditState>((set, get) => {
   const addLog = (entry: LogEntry) =>
-    set((s) => ({ logs: [...s.logs, entry] }));
+    set((s) => ({ logs: [...s.logs, entry].slice(-MAX_LOG_ENTRIES) }));
 
   return {
     apiKey: "",
@@ -62,6 +66,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     report: "",
     reportOpen: false,
     error: "",
+    debugMode: false,
 
     hydrate: () => {
       if (typeof window === "undefined") return;
@@ -85,6 +90,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     setLanguage: (l) => set({ language: l }),
     setUrl: (v) => set({ url: v }),
     setReportOpen: (open) => set({ reportOpen: open }),
+    setDebugMode: (v) => set({ debugMode: v }),
 
     fetchModels: async () => {
       const { apiKey, group } = get();
@@ -114,7 +120,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     },
 
     runAudit: async () => {
-      const { apiKey, modelId, url, group, language } = get();
+      const { apiKey, modelId, url, group, language, debugMode } = get();
       if (!apiKey.trim() || !modelId || !url.trim()) return;
 
       // Abort any previous run so a fresh click always starts a new audit.
@@ -139,7 +145,14 @@ export const useAuditStore = create<AuditState>((set, get) => {
         const res = await fetch("/api/audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey, modelId, group, url, language }),
+          body: JSON.stringify({
+            apiKey,
+            modelId,
+            group,
+            url,
+            language,
+            debugMode,
+          }),
           signal: controller.signal,
         });
 
@@ -147,7 +160,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
 
         await consumeSSE(res.body, {
           onStatus: (p) =>
-            addLog({ type: "status", message: p.message, time: now() }),
+            addLog({ type: "status", message: p.message, phase: p.phase, time: now() }),
           onTool: (p) =>
             addLog({ type: "tool", name: p.name, args: p.args, time: now() }),
           onToolError: (p) =>
@@ -156,6 +169,23 @@ export const useAuditStore = create<AuditState>((set, get) => {
               name: p.name,
               args: p.args,
               error: p.error,
+              time: now(),
+            }),
+          onToolEnd: (p) =>
+            addLog({
+              type: "tool_end",
+              name: p.name,
+              ok: p.ok,
+              durationMs: p.durationMs,
+              bytes: p.bytes,
+              error: p.error,
+              time: now(),
+            }),
+          onDebug: (p) =>
+            addLog({
+              type: "debug",
+              message: p.message,
+              data: p.data,
               time: now(),
             }),
           onError: (p) => {

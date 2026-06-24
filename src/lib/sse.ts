@@ -22,6 +22,17 @@ export function createEmitter(controller: ReadableStreamDefaultController): Emit
   };
 }
 
+export function createKeepAlive(controller: ReadableStreamDefaultController) {
+  const encoder = new TextEncoder();
+  return () => {
+    try {
+      controller.enqueue(encoder.encode(": keepalive\n\n"));
+    } catch {
+      // Stream may already be closed; safe to ignore.
+    }
+  };
+}
+
 /**
  * Headers shared by every SSE response.
  */
@@ -29,4 +40,5 @@ export const SSE_HEADERS: Record<string, string> = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
 };

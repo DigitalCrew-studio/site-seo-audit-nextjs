@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 
 export function ProcessLog() {
-  const { logs, running } = useAuditStore(
-    useShallow((s) => ({ logs: s.logs, running: s.running }))
+  const { logs, running, debugMode, setDebugMode } = useAuditStore(
+    useShallow((s) => ({
+      logs: s.logs,
+      running: s.running,
+      debugMode: s.debugMode,
+      setDebugMode: s.setDebugMode,
+    }))
   );
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -14,6 +19,18 @@ export function ProcessLog() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  // Keep every log in the store; the UI filters debug-only entries based on
+  // the live toggle so a flip during the run is reflected immediately.
+  const visibleLogs = useMemo(
+    () =>
+      debugMode
+        ? logs
+        : logs.filter(
+            (l) => l.type !== "debug" && l.type !== "tool_end"
+          ),
+    [logs, debugMode]
+  );
 
   if (!running && logs.length === 0) return null;
 
@@ -28,16 +45,38 @@ export function ProcessLog() {
           process — {running ? "live" : "ended"}
         </span>
         {running && (
-          <span className="ml-auto flex items-center gap-2">
+          <span className="flex items-center gap-2">
             <span className="pulse-dot" />
             <span className="eyebrow text-white/45">auditing</span>
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => setDebugMode(!debugMode)}
+          aria-pressed={debugMode}
+          title={
+            debugMode
+              ? "Hide debug events and tool completion details"
+              : "Show debug events and tool completion details"
+          }
+          className={`ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
+            debugMode
+              ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
+              : "border-white/15 text-white/55 hover:border-white/30 hover:text-white/80"
+          }`}
+        >
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full transition ${
+              debugMode ? "bg-emerald-300" : "bg-white/40"
+            }`}
+          />
+          debug
+        </button>
       </div>
 
       {/* Body */}
       <div className="terminal-scroll max-h-[22rem] space-y-1.5 overflow-y-auto px-4 py-4 font-mono text-[13px] leading-relaxed">
-        {logs.map((log, idx) => (
+        {visibleLogs.map((log, idx) => (
           <div key={idx} className="flex gap-3">
             <span className="shrink-0 select-none text-white/25">{log.time}</span>
             {log.type === "status" && (
@@ -54,6 +93,38 @@ export function ProcessLog() {
                     .join(", ")}
                   )
                 </span>
+              </span>
+            )}
+            {log.type === "tool_end" && (
+              <span className="text-sky-300/90">
+                <span className="text-white/30">↳</span> {log.name}{" "}
+                <span
+                  className={
+                    log.ok ? "text-emerald-300/90" : "text-amber-300/90"
+                  }
+                >
+                  {log.ok ? "ok" : "failed"}
+                </span>
+                <span className="text-white/45">
+                  {" "}· {log.durationMs}ms · {log.bytes}B
+                </span>
+                {log.error && (
+                  <span className="text-amber-300/90"> — {log.error}</span>
+                )}
+              </span>
+            )}
+            {log.type === "debug" && (
+              <span className="text-sky-300/80">
+                <span className="text-white/30">·</span> {log.message}
+                {log.data && Object.keys(log.data).length > 0 && (
+                  <span className="text-white/35">
+                    {" "}(
+                    {Object.entries(log.data)
+                      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+                      .join(", ")}
+                    )
+                  </span>
+                )}
               </span>
             )}
             {log.type === "tool_error" && (

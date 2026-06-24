@@ -10,22 +10,39 @@ export type AuditRequest = {
   group: OpenCodeGroup;
   url: string;
   language: AuditLanguage;
+  /**
+   * Whether the client wants to surface debug-level events. The server always
+   * emits the same structured events; the client filters them for display.
+   */
+  debugMode?: boolean;
 };
 
 // ----- SSE payload shapes (server -> client) -----
-export type SSEStatus = { message: string };
+export type SSEStatus = { message: string; phase?: string };
 export type SSETool = { name: string; args: Record<string, unknown> };
 export type SSEToolError = {
   name: string;
   args: Record<string, unknown>;
   error: string;
 };
+export type SSEToolEnd = {
+  name: string;
+  ok: boolean;
+  durationMs: number;
+  bytes: number;
+  error?: string;
+};
+export type SSEDebug = { message: string; data?: Record<string, unknown> };
 export type SSEReport = { report: string };
 export type SSEError = { message: string };
 
 // ----- Client log entries (derived from SSE events) -----
+// Existing variants stay backward compatible. New `debug` and `tool_end`
+// entries are always stored; the UI hides them when debugMode is off.
 export type LogEntry =
-  | { type: "status"; message: string; time: string }
+  | { type: "status"; message: string; phase?: string; time: string }
   | { type: "tool"; name: string; args: Record<string, unknown>; time: string }
   | { type: "tool_error"; name: string; args: Record<string, unknown>; error: string; time: string }
+  | { type: "tool_end"; name: string; ok: boolean; durationMs: number; bytes: number; error?: string; time: string }
+  | { type: "debug"; message: string; data?: Record<string, unknown>; time: string }
   | { type: "error"; message: string; time: string };
