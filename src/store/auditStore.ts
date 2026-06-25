@@ -5,10 +5,12 @@ import type {
   LogEntry,
   ModelInfo,
   OpenCodeGroup,
+  ScreenshotEntry,
 } from "@/lib/types";
 
 const STORAGE_KEY = "opencode_api_key";
 const MAX_LOG_ENTRIES = 2000;
+const MAX_SCREENSHOTS = 20;
 
 // Non-reactive runtime handles (kept outside React/store state).
 let abortController: AbortController | null = null;
@@ -30,6 +32,7 @@ type AuditState = {
   // ----- audit state -----
   running: boolean;
   logs: LogEntry[];
+  screenshots: ScreenshotEntry[];
   report: string;
   reportOpen: boolean;
   error: string;
@@ -63,6 +66,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     loadingModels: false,
     running: false,
     logs: [],
+    screenshots: [],
     report: "",
     reportOpen: false,
     error: "",
@@ -133,7 +137,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
         if (runId === id) fn();
       };
 
-      set({ running: true, report: "", reportOpen: false, error: "", logs: [] });
+      set({ running: true, report: "", reportOpen: false, error: "", logs: [], screenshots: [] });
       addLog({
         type: "status",
         message:
@@ -188,6 +192,12 @@ export const useAuditStore = create<AuditState>((set, get) => {
               data: p.data,
               time: now(),
             }),
+          onScreenshot: (p) =>
+            setIfCurrent(() =>
+              set((s) => ({
+                screenshots: [...s.screenshots, p].slice(-MAX_SCREENSHOTS),
+              }))
+            ),
           onError: (p) => {
             setIfCurrent(() => set({ error: p.message }));
             addLog({ type: "error", message: p.message, time: now() });

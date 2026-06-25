@@ -1,6 +1,7 @@
 import { AppBar } from "@/components/AppBar";
 import { AuditForm } from "@/components/AuditForm";
 import { ProcessLog } from "@/components/ProcessLog";
+import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { ReportCard } from "@/components/ReportCard";
 import { ReportDialog } from "@/components/ReportDialog";
 
@@ -32,6 +33,7 @@ export default function HomePage() {
           <div className="space-y-6">
             <AuditForm />
             <ProcessLog />
+            <ScreenshotGallery />
             <ReportCard />
           </div>
 

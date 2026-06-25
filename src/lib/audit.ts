@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { Stream } from "openai/core/streaming";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { randomUUID } from "node:crypto";
 import { loadSkillText } from "@/lib/skill";
 import { BrowserSession, type BrowserLogFn } from "@/lib/playwright";
 import { getEndpoint } from "@/lib/opencode";
@@ -10,7 +11,8 @@ import { buildSystemPrompt, buildUserPrompt } from "@/lib/prompts";
 import type { Emitter } from "@/lib/sse";
 import type { AuditLanguage, OpenCodeGroup } from "@/lib/types";
 
-const MAX_ITERATIONS = 16;
+const MAX_ITERATIONS = 8;
+const MAX_DISCOVERY_ITERATIONS = 6;
 const MAX_TOKENS = 16000;
 const TOOL_TIMEOUT_MS = 25000;
 
@@ -21,9 +23,18 @@ const OPENAI_TIMEOUT_MS = 120000;
 // Budgets that keep the audit from running away. Values are intentionally
 // pragmatic (not a 1:1 token/byte map) — they just cap the worst cases.
 const PER_MODEL_WAIT_MS = 110000;        // hard cap on a single model call
-const MAX_AUDIT_DURATION_MS = 240000;   // total wall-clock cap for the loop
+const MAX_AUDIT_DURATION_MS = 300000;   // total wall-clock cap for the loop
+const FINALIZE_AFTER_MS = 210000;       // switch from discovery to report writing
+const MIN_FINAL_REPORT_MS = 60000;      // keep enough time for the final report
 const MAX_TOOL_RESULT_BYTES = 64_000;   // per-tool result cap before model ctx
+const MAX_HTML_TOOL_RESULT_BYTES = 24_000;
+const MAX_TEXT_TOOL_RESULT_BYTES = 16_000;
 const MAX_CONTEXT_BYTES = 1_500_000;    // total message-array bytes cap
+const MAX_TOOL_CALLS = 32;
+const MAX_VISIT_PAGE_CALLS = 18;
+const MAX_HTML_TOOL_CALLS = 6;
+const MAX_SCREENSHOT_CALLS = 3;
+const MAX_INTERNAL_LINK_CALLS = 6;
 
 // Throttling for streamed model output. Emit a status/debug event at most
 // once per window so the UI gets visible progress without log spam.
@@ -42,6 +53,16 @@ const SENSITIVE_QUERY_KEYS = new Set([
   "signature",
   "token",
 ]);
+const STATIC_ASSET_EXT_RE = /\.(png|jpe?g|webp|gif|svg|ico|pdf|zip|mp4|webm)(?:[?#].*)?$/i;
+const STATIC_SKIP_TOOLS = new Set([
+  "visit_page",
+  "get_rendered_html",
+  "get_rendered_text",
+  "take_screenshot",
+]);
+const HTML_TOOLS = new Set(["fetch_raw_html", "get_rendered_html", "get_rendered_text"]);
+
+type AuditMode = "discovery" | "final";
 
 type RunAuditParams = {
   apiKey: string;
@@ -55,6 +76,35 @@ type RunAuditParams = {
 };
 
 type ToolError = { name: string; args: Record<string, unknown>; error: string };
+type ToolStats = {
+  total: number;
+  visit_page: number;
+  fetch_raw_html: number;
+  get_rendered_html: number;
+  get_rendered_text: number;
+  take_screenshot: number;
+  list_internal_links: number;
+  check_robots_and_sitemap: number;
+  denied: number;
+  cacheHits: number;
+  skippedStaticAssets: number;
+};
+
+function createToolStats(): ToolStats {
+  return {
+    total: 0,
+    visit_page: 0,
+    fetch_raw_html: 0,
+    get_rendered_html: 0,
+    get_rendered_text: 0,
+    take_screenshot: 0,
+    list_internal_links: 0,
+    check_robots_and_sitemap: 0,
+    denied: 0,
+    cacheHits: 0,
+    skippedStaticAssets: 0,
+  };
+}
 
 function utf8Bytes(text: string): number {
   return textEncoder.encode(text).length;
@@ -121,6 +171,90 @@ function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
   return redacted;
 }
 
+function buildFinalReportMessage(language: AuditLanguage): ChatCompletionMessageParam {
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? "Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному шаблону отчёта из системного промпта. Если данных не хватает, явно укажи ограничение и не выдумывай факты."
+        : "Stop calling tools. Produce the FINAL SEO audit report now using only the evidence already collected. Follow the required report template from the system prompt. If evidence is incomplete, state the limitation clearly and do not invent facts.",
+  };
+}
+
+function toolCacheKey(name: string, args: Record<string, unknown>): string {
+  return `${name}:${JSON.stringify(args)}`;
+}
+
+function isStaticAssetToolCall(name: string, args: Record<string, unknown>): boolean {
+  if (!STATIC_SKIP_TOOLS.has(name)) return false;
+  const url = args.url;
+  return typeof url === "string" && STATIC_ASSET_EXT_RE.test(url);
+}
+
+function countHtmlToolCalls(stats: ToolStats): number {
+  return stats.fetch_raw_html + stats.get_rendered_html + stats.get_rendered_text;
+}
+
+function canRunTool(name: string, stats: ToolStats): { ok: boolean; reason?: string } {
+  if (stats.total >= MAX_TOOL_CALLS) {
+    return { ok: false, reason: `total tool budget exhausted (${stats.total}/${MAX_TOOL_CALLS})` };
+  }
+  if (name === "visit_page" && stats.visit_page >= MAX_VISIT_PAGE_CALLS) {
+    return { ok: false, reason: `visit_page budget exhausted (${stats.visit_page}/${MAX_VISIT_PAGE_CALLS})` };
+  }
+  if (HTML_TOOLS.has(name) && countHtmlToolCalls(stats) >= MAX_HTML_TOOL_CALLS) {
+    return { ok: false, reason: `HTML/text tool budget exhausted (${countHtmlToolCalls(stats)}/${MAX_HTML_TOOL_CALLS})` };
+  }
+  if (name === "take_screenshot" && stats.take_screenshot >= MAX_SCREENSHOT_CALLS) {
+    return { ok: false, reason: `screenshot budget exhausted (${stats.take_screenshot}/${MAX_SCREENSHOT_CALLS})` };
+  }
+  if (name === "list_internal_links" && stats.list_internal_links >= MAX_INTERNAL_LINK_CALLS) {
+    return { ok: false, reason: `internal link budget exhausted (${stats.list_internal_links}/${MAX_INTERNAL_LINK_CALLS})` };
+  }
+  return { ok: true };
+}
+
+function recordToolCall(name: string, stats: ToolStats): void {
+  stats.total += 1;
+  if (name in stats && name !== "total" && name !== "denied" && name !== "cacheHits" && name !== "skippedStaticAssets") {
+    stats[name as keyof Omit<ToolStats, "total" | "denied" | "cacheHits" | "skippedStaticAssets">] += 1;
+  }
+}
+
+function shouldFinalize(params: {
+  iterations: number;
+  elapsedMs: number;
+  remainingMs: number;
+  stats: ToolStats;
+}): { yes: boolean; reason?: string } {
+  const { iterations, elapsedMs, remainingMs, stats } = params;
+  if (iterations >= MAX_DISCOVERY_ITERATIONS) {
+    return { yes: true, reason: `max discovery iterations reached (${iterations}/${MAX_DISCOVERY_ITERATIONS})` };
+  }
+  if (elapsedMs >= FINALIZE_AFTER_MS) {
+    return { yes: true, reason: `finalize-after time reached (${elapsedMs}/${FINALIZE_AFTER_MS}ms)` };
+  }
+  if (remainingMs <= MIN_FINAL_REPORT_MS) {
+    return { yes: true, reason: `only ${remainingMs}ms remaining for final report` };
+  }
+  if (stats.total >= MAX_TOOL_CALLS) {
+    return { yes: true, reason: `total tool budget exhausted (${stats.total}/${MAX_TOOL_CALLS})` };
+  }
+  if (stats.visit_page >= MAX_VISIT_PAGE_CALLS) {
+    return { yes: true, reason: `visit_page budget exhausted (${stats.visit_page}/${MAX_VISIT_PAGE_CALLS})` };
+  }
+  if (countHtmlToolCalls(stats) >= MAX_HTML_TOOL_CALLS) {
+    return { yes: true, reason: `HTML/text tool budget exhausted (${countHtmlToolCalls(stats)}/${MAX_HTML_TOOL_CALLS})` };
+  }
+  if (stats.take_screenshot >= MAX_SCREENSHOT_CALLS) {
+    return { yes: true, reason: `screenshot budget exhausted (${stats.take_screenshot}/${MAX_SCREENSHOT_CALLS})` };
+  }
+  if (stats.list_internal_links >= MAX_INTERNAL_LINK_CALLS) {
+    return { yes: true, reason: `internal link budget exhausted (${stats.list_internal_links}/${MAX_INTERNAL_LINK_CALLS})` };
+  }
+  return { yes: false };
+}
+
 /**
  * Cap a tool result before it is appended to the model context. Screenshots
  * are a special case: the full base64 is intentionally NOT sent to the model
@@ -146,7 +280,11 @@ function shapeToolResult(
   }
 
   const json = JSON.stringify(payload);
-  const cap = MAX_TOOL_RESULT_BYTES;
+  const cap = name === "get_rendered_text"
+    ? MAX_TEXT_TOOL_RESULT_BYTES
+    : name === "fetch_raw_html" || name === "get_rendered_html"
+      ? MAX_HTML_TOOL_RESULT_BYTES
+      : MAX_TOOL_RESULT_BYTES;
   const jsonBytes = utf8Bytes(json);
   if (jsonBytes <= cap) {
     return { content: json, bytes: jsonBytes, truncated: false, omittedScreenshot };
@@ -210,6 +348,38 @@ async function executeTool(
         );
       }),
     ]);
+
+    // Screenshot success: hand the full payload to the client for the gallery.
+    // The model context below deliberately omits the base64 (see
+    // `shapeToolResult`), so this is the only place the bytes leave the server.
+    if (
+      name === "take_screenshot" &&
+      result &&
+      typeof result === "object" &&
+      !Array.isArray(result)
+    ) {
+      const r = result as { base64?: unknown; mimeType?: unknown; bytes?: unknown };
+      if (typeof r.base64 === "string" && r.base64.length > 0) {
+        const base64 = r.base64;
+        const mimeType = typeof r.mimeType === "string" ? r.mimeType : "image/jpeg";
+        const bytes =
+          typeof r.bytes === "number"
+            ? r.bytes
+            : Buffer.byteLength(base64, "base64");
+        const toolUrl = args.url;
+        const screenshotUrl =
+          typeof toolUrl === "string" && toolUrl.length > 0 ? toolUrl : undefined;
+        emit("screenshot", {
+          id: randomUUID(),
+          url: screenshotUrl,
+          mimeType,
+          base64,
+          bytes,
+          takenAt: new Date().toISOString(),
+        });
+      }
+    }
+
     const shaped = shapeToolResult(name, result);
     const fullBytes = approxBytes(result);
     if (shaped.truncated) {
@@ -264,6 +434,7 @@ async function runModelStep(
   modelId: string,
   messages: ChatCompletionMessageParam[],
   step: number,
+  mode: AuditMode,
   requestBytes: number,
   modelWaitMs: number,
   signal: AbortSignal | undefined,
@@ -276,11 +447,15 @@ async function runModelStep(
   chunkCount: number;
   firstChunkMs: number;
 }> {
-  setPhase(`model:thinking step ${step}`);
-  emit("status", { message: `Thinking step ${step}...`, phase: `model:thinking step ${step}` });
+  const phase = mode === "final" ? "model:final report" : `model:thinking step ${step}`;
+  setPhase(phase);
+  emit("status", {
+    message: mode === "final" ? "Writing final report..." : `Thinking step ${step}...`,
+    phase,
+  });
   emit("debug", {
-    message: `Model request started (step ${step})`,
-    data: { model: modelId, messages: messages.length, requestBytes, maxTokens: MAX_TOKENS },
+    message: mode === "final" ? "Final report request started" : `Model request started (step ${step})`,
+    data: { mode, model: modelId, messages: messages.length, requestBytes, maxTokens: MAX_TOKENS },
   });
 
   const startedAt = Date.now();
@@ -313,17 +488,20 @@ async function runModelStep(
     }
   };
 
+  const request = {
+    model: modelId,
+    messages,
+    ...(mode === "discovery" ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
+    temperature: 0.2,
+    max_tokens: MAX_TOKENS,
+    stream: true as const,
+    stream_options: { include_usage: true },
+  };
   const stream: Stream<ChatCompletionChunk> = await withModelBudget(
-    openai.chat.completions.create({
-      model: modelId,
-      messages,
-      tools: TOOLS,
-      tool_choice: "auto",
-      temperature: 0.2,
-      max_tokens: MAX_TOKENS,
-      stream: true,
-      stream_options: { include_usage: true },
-    }, { signal: requestController.signal, timeout: OPENAI_TIMEOUT_MS })
+    openai.chat.completions.create(request, {
+      signal: requestController.signal,
+      timeout: OPENAI_TIMEOUT_MS,
+    })
   );
 
   let content = "";
@@ -342,10 +520,12 @@ async function runModelStep(
       if (chunkCount % STREAM_PROGRESS_EVERY_CHUNKS !== 0) return;
     }
     lastProgressAt = now;
-    setPhase(`model:streaming step ${step} (${chunkCount} chunks)`);
+    setPhase(mode === "final" ? `model:final report (${chunkCount} chunks)` : `model:streaming step ${step} (${chunkCount} chunks)`);
     emit("status", {
-      message: `Model streaming step ${step} (${chunkCount} chunks, ${content.length}B content so far)...`,
-      phase: `model:streaming step ${step}`,
+      message: mode === "final"
+        ? `Final report streaming (${chunkCount} chunks, ${content.length}B content so far)...`
+        : `Model streaming step ${step} (${chunkCount} chunks, ${content.length}B content so far)...`,
+      phase: mode === "final" ? "model:final report" : `model:streaming step ${step}`,
     });
   };
 
@@ -432,8 +612,9 @@ async function runModelStep(
     }));
 
   emit("debug", {
-    message: `Model request finished (step ${step})`,
+    message: mode === "final" ? "Final report request finished" : `Model request finished (step ${step})`,
     data: {
+      mode,
       durationMs,
       firstChunkMs,
       chunks: chunkCount,
@@ -474,6 +655,11 @@ export async function runAudit({
   };
   const browser = new BrowserSession({ onLog: browserLog });
   const toolErrors: ToolError[] = [];
+  const toolStats = createToolStats();
+  const toolCache = new Map<string, string>();
+  let iterations = 0;
+  let mode: AuditMode = "discovery";
+  let reportDone = false;
 
   const setPhase = (phase: string) => {
     try {
@@ -518,22 +704,49 @@ export async function runAudit({
       timeout: OPENAI_TIMEOUT_MS,
     });
 
-    let iterations = 0;
+    let finalMessageAdded = false;
     while (iterations < MAX_ITERATIONS) {
       if (isAborted(signal)) {
         emit("error", { message: "Audit aborted by client" });
         return;
       }
-      if (Date.now() - auditStartedAt > MAX_AUDIT_DURATION_MS) {
+      const elapsedMs = Date.now() - auditStartedAt;
+      const remainingMs = MAX_AUDIT_DURATION_MS - elapsedMs;
+      if (remainingMs <= 0) {
         emit("error", {
-          message: `Audit aborted: exceeded total duration budget of ${MAX_AUDIT_DURATION_MS}ms`,
+          message: `Audit stopped by time budget after ${iterations} step(s), ${toolStats.total} tool(s), ${elapsedMs}ms elapsed. No final report was produced.`,
+        });
+        emit("debug", {
+          message: "Audit stopped without final report",
+          data: { iterations, elapsedMs, toolStats },
         });
         return;
       }
-      iterations += 1;
-      setPhase(`model:thinking step ${iterations}`);
 
-      const requestBytes = approxBytes({ messages, tools: TOOLS.length });
+      if (mode === "discovery") {
+        const decision = shouldFinalize({ iterations, elapsedMs, remainingMs, stats: toolStats });
+        if (decision.yes) {
+          mode = "final";
+          emit("status", {
+            message: `Switching to final report mode: ${decision.reason}`,
+            phase: "report",
+          });
+          emit("debug", {
+            message: "Tool budget state",
+            data: { reason: decision.reason, iterations, elapsedMs, remainingMs, toolStats },
+          });
+        }
+      }
+
+      if (mode === "final" && !finalMessageAdded) {
+        messages.push(buildFinalReportMessage(language));
+        finalMessageAdded = true;
+      }
+
+      iterations += 1;
+      setPhase(mode === "final" ? "model:final report" : `model:thinking step ${iterations}`);
+
+      const requestBytes = approxBytes({ messages, tools: mode === "discovery" ? TOOLS.length : 0 });
       if (requestBytes > MAX_CONTEXT_BYTES) {
         emit("error", {
           message: `Aborting: model context would be ${requestBytes}B (max ${MAX_CONTEXT_BYTES}B)`,
@@ -548,6 +761,7 @@ export async function runAudit({
         modelId,
         messages,
         iterations,
+        mode,
         requestBytes,
         modelWaitMs,
         signal,
@@ -559,7 +773,23 @@ export async function runAudit({
       if (!content && toolCalls.length === 0) {
         const reason = finishReason ? ` (finish_reason=${finishReason})` : "";
         emit("error", {
-          message: `Empty model response at thinking step ${iterations}${reason}`,
+          message: mode === "final"
+            ? `Empty final report response${reason}`
+            : `Empty model response at thinking step ${iterations}${reason}`,
+        });
+        break;
+      }
+
+      if (mode === "final") {
+        if (content) {
+          setPhase("report");
+          emit("status", { message: "Generating final report...", phase: "report" });
+          emit("done", { report: content });
+          reportDone = true;
+          break;
+        }
+        emit("error", {
+          message: "Final report mode produced no report content.",
         });
         break;
       }
@@ -608,6 +838,69 @@ export async function runAudit({
             });
             continue;
           }
+
+          if (isStaticAssetToolCall(toolCall.function.name, args)) {
+            toolStats.skippedStaticAssets += 1;
+            const skipped = JSON.stringify({
+              skipped: true,
+              reason: "Static asset URL skipped by audit policy",
+              url: typeof args.url === "string" ? args.url : undefined,
+            });
+            emit("debug", {
+              message: "Tool skipped for static asset URL",
+              data: { name: toolCall.function.name, args: redactArgs(args) },
+            });
+            emit("tool_end", {
+              name: toolCall.function.name,
+              ok: true,
+              durationMs: 0,
+              bytes: approxBytes(skipped),
+            });
+            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: skipped });
+            continue;
+          }
+
+          const cacheKey = toolCacheKey(toolCall.function.name, args);
+          const cached = toolCache.get(cacheKey);
+          if (cached) {
+            toolStats.cacheHits += 1;
+            emit("debug", {
+              message: "Tool cache hit",
+              data: { name: toolCall.function.name, args: redactArgs(args) },
+            });
+            emit("tool_end", {
+              name: toolCall.function.name,
+              ok: true,
+              durationMs: 0,
+              bytes: utf8Bytes(cached),
+            });
+            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: cached });
+            continue;
+          }
+
+          const budget = canRunTool(toolCall.function.name, toolStats);
+          if (!budget.ok) {
+            toolStats.denied += 1;
+            const denied = JSON.stringify({
+              error: `Tool call skipped: ${budget.reason}. Continue to final report using collected evidence.`,
+            });
+            emit("status", {
+              message: `Denied ${toolCall.function.name}: ${budget.reason}`,
+              phase: "tools",
+            });
+            emit("debug", {
+              message: "Tool call denied by budget",
+              data: { name: toolCall.function.name, reason: budget.reason, toolStats },
+            });
+            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: denied });
+            continue;
+          }
+
+          recordToolCall(toolCall.function.name, toolStats);
+          emit("debug", {
+            message: "Tool budget",
+            data: { used: toolStats.total, max: MAX_TOOL_CALLS, toolStats },
+          });
           const content = await executeTool(
             toolCall.function.name,
             args,
@@ -615,6 +908,7 @@ export async function runAudit({
             emit,
             toolErrors
           );
+          toolCache.set(cacheKey, content);
           toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content });
         }
         messages.push(...toolResults);
@@ -635,6 +929,7 @@ export async function runAudit({
         setPhase("report");
         emit("status", { message: "Generating final report...", phase: "report" });
         emit("done", { report: content });
+        reportDone = true;
         break;
       }
 
@@ -644,7 +939,7 @@ export async function runAudit({
       break;
     }
 
-    if (iterations >= MAX_ITERATIONS) {
+    if (!reportDone && iterations >= MAX_ITERATIONS) {
       emit("error", {
         message: "Stopped after maximum number of tool-call rounds.",
       });
@@ -675,6 +970,16 @@ export async function runAudit({
         message: raw.includes("Model request timed out")
           ? raw
           : `Model request timed out after ${PER_MODEL_WAIT_MS}ms at thinking step${stepSuffix}`,
+      });
+      emit("debug", {
+        message: "Audit timeout stats",
+        data: {
+          iterations,
+          elapsedMs: Date.now() - auditStartedAt,
+          toolStats,
+          mode,
+          reportDone,
+        },
       });
     } else {
       emit("error", { message: raw });

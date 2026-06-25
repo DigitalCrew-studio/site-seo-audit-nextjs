@@ -36,6 +36,34 @@ export type SSEDebug = { message: string; data?: Record<string, unknown> };
 export type SSEReport = { report: string };
 export type SSEError = { message: string };
 
+/**
+ * Emitted by the server when `take_screenshot` succeeds. The full base64
+ * payload is included for the UI gallery; the model context deliberately
+ * omits it (see `shapeToolResult` in `src/lib/audit.ts`).
+ */
+export type SSEScreenshot = {
+  id: string;
+  url?: string;
+  mimeType: string;
+  base64: string;
+  bytes: number;
+  takenAt: string;
+};
+
+/**
+ * Client-side store entry for a captured screenshot. Shape mirrors
+ * `SSEScreenshot` so the client can store the server payload as-is and cap
+ * the history without a separate transform.
+ */
+export type ScreenshotEntry = {
+  id: string;
+  url?: string;
+  mimeType: string;
+  base64: string;
+  bytes: number;
+  takenAt: string;
+};
+
 // ----- Client log entries (derived from SSE events) -----
 // Existing variants stay backward compatible. New `debug` and `tool_end`
 // entries are always stored; the UI hides them when debugMode is off.
