@@ -14,6 +14,7 @@ export interface StatusNoticeProps
   tone?: Tone;
   icon?: React.ReactNode;
   heading?: React.ReactNode;
+  action?: React.ReactNode;
 }
 
 export function StatusNotice({
@@ -21,6 +22,7 @@ export function StatusNotice({
   tone = "info",
   icon,
   heading,
+  action,
   children,
   ...props
 }: StatusNoticeProps) {
@@ -40,6 +42,8 @@ export function StatusNotice({
         {heading ? <p className="font-medium text-ink">{heading}</p> : null}
         {children ? <div className={heading ? "mt-1 text-muted" : "text-muted"}>{children}</div> : null}
       </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
+

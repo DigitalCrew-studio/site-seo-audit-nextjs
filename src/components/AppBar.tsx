@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
-import { LogoMark } from "@/components/LogoMark";
+import { Logo } from "@/components/Logo";
 
 type NavItem = {
   href: string;
@@ -60,38 +60,26 @@ export function AppBar() {
 
   return (
     <header
-      className={`sticky top-0 z-40 transition-all duration-500 ease-out ${
-        compacted ? "py-2" : "border-b border-line bg-surface/85 backdrop-blur"
-      }`}
+      className={`sticky top-0 z-40 transition-all duration-500 ease-out ${compacted ? "py-2" : "border-b border-line bg-surface/85 backdrop-blur"
+        }`}
     >
       <div
-        className={`mx-auto flex items-center justify-between gap-4 px-4 transition-all duration-500 ease-out sm:px-6 ${
-          compacted
-            ? "h-14 max-w-[min(68rem,calc(100%_-_1rem))] rounded-full border border-line/70 bg-surface/58 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl backdrop-saturate-150"
-            : "h-[72px] max-w-6xl"
-        }`}
+        className={`mx-auto flex items-center justify-between gap-4 px-4 transition-all duration-500 ease-out sm:px-6 ${compacted
+          ? "h-[76px] max-w-[min(68rem,calc(100%_-_1rem))] rounded-full border border-line/70 bg-surface/58 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl backdrop-saturate-150"
+          : "h-[108px] max-w-6xl"
+          }`}
       >
         <Link
           href="/"
+          aria-label="Seofriendly — на главную"
           className="group flex items-center gap-3 rounded-full text-left transition hover:opacity-85"
         >
-          <LogoMark size={compacted ? 28 : 32} />
-          <div className="flex items-baseline gap-2">
-            <span
-              className={`font-semibold tracking-tight text-ink transition-all duration-500 ease-out ${
-                compacted ? "text-[17px]" : "text-[19px]"
-              }`}
-            >
-              Seofriendly
-            </span>
-            <span
-              className={`hidden eyebrow text-faint transition-opacity duration-500 sm:inline ${
-                compacted ? "opacity-0 lg:opacity-100" : "opacity-100"
-              }`}
-            >
-              seo-аудит
-            </span>
-          </div>
+          <Logo
+            variant="full"
+            height={compacted ? 48 : 64}
+            preload
+            className="w-auto transition-all duration-500 ease-out"
+          />
         </Link>
 
         <nav className="hidden items-center gap-6 sm:flex">
@@ -102,17 +90,15 @@ export function AppBar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`group/link relative py-2 text-[14px] font-medium transition-colors ${
-                  active
-                    ? "text-ink"
-                    : "text-muted hover:text-ink"
-                }`}
+                className={`group/link relative py-2 text-[14px] font-medium transition-colors ${active
+                  ? "text-ink"
+                  : "text-muted hover:text-ink"
+                  }`}
               >
                 {item.label}
                 <span
-                  className={`absolute -bottom-0.5 left-0 h-px bg-ink transition-all duration-300 ${
-                    active ? "w-full" : "w-0 group-hover/link:w-full"
-                  }`}
+                  className={`absolute -bottom-0.5 left-0 h-px bg-ink transition-all duration-300 ${active ? "w-full" : "w-0 group-hover/link:w-full"
+                    }`}
                 />
                 <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent opacity-0 transition duration-300 group-hover/link:opacity-100" />
               </Link>
@@ -135,9 +121,8 @@ export function AppBar() {
       {menuOpen && (
         <div
           id="mobile-navigation"
-          className={`mx-auto mt-2 max-w-[calc(100%_-_1rem)] overflow-hidden rounded-2xl border border-line bg-surface/88 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl sm:hidden ${
-            scrolled ? "" : "mb-2"
-          }`}
+          className={`mx-auto mt-2 max-w-[calc(100%_-_1rem)] overflow-hidden rounded-2xl border border-line bg-surface/88 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl sm:hidden ${scrolled ? "" : "mb-2"
+            }`}
         >
           <nav className="flex flex-col gap-1 px-3 py-3">
             {NAV_ITEMS.map((item) => {
@@ -148,11 +133,10 @@ export function AppBar() {
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
                   aria-current={active ? "page" : undefined}
-                  className={`group/mobile relative rounded-xl px-3 py-2.5 text-[15px] font-medium transition ${
-                    active
-                      ? "bg-ink text-paper"
-                      : "text-muted hover:bg-paper hover:text-ink"
-                  }`}
+                  className={`group/mobile relative rounded-xl px-3 py-2.5 text-[15px] font-medium transition ${active
+                    ? "bg-ink text-paper"
+                    : "text-muted hover:bg-paper hover:text-ink"
+                    }`}
                 >
                   {item.label}
                   {!active && (

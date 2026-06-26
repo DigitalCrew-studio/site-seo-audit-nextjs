@@ -1,0 +1,19 @@
+{
+  "name": "Seofriendly — бесплатный SEO-аудит нейросетью",
+  "short_name": "Seofriendly",
+  "description": "Бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap, robots, canonical, мета-тегов, скорости и адаптивности.",
+  "lang": "ru-RU",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f5f1",
+  "theme_color": "#1b1b19",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" },
+    { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "/icon.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/icon1.png", "sizes": "16x16", "type": "image/png" },
+    { "src": "/icon2.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon3.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

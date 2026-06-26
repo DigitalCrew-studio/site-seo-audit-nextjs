@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogoMark } from "@/components/LogoMark";
+import { Logo } from "@/components/Logo";
 
 const NAV_LINKS = [
   { href: "/", label: "Главная" },
@@ -21,12 +21,10 @@ export function Footer() {
           <div className="max-w-md">
             <Link
               href="/"
-              className="inline-flex items-center gap-3 rounded-md transition hover:opacity-80"
+              aria-label="Seofriendly — на главную"
+              className="inline-flex items-center rounded-md transition hover:opacity-80"
             >
-              <LogoMark size={30} />
-              <span className="text-[17px] font-semibold tracking-tight text-ink">
-                Seofriendly
-              </span>
+              <Logo variant="full" height={32} className="w-auto transition-all duration-500 ease-out" />
             </Link>
             <p className="mt-3 text-sm leading-relaxed text-muted">
               Бесплатный SEO-аудит сайта нейросетью: технические факты,

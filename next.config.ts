@@ -12,6 +12,19 @@ const nextConfig: NextConfig = {
     root: dirname(fileURLToPath(import.meta.url)),
   },
   poweredByHeader: false,
+  // Explicitly allow only the local images we actually optimize through
+  // `next/image`. Without this Next.js 16 would accept any `/...` path,
+  // which a malicious actor could probe via the Image Optimization API.
+  images: {
+    localPatterns: [
+      { pathname: "/full-logo.webp", search: "" },
+      { pathname: "/small-logo.webp", search: "" },
+      { pathname: "/hero-bg-desktop-laptop.webp", search: "" },
+      { pathname: "/hero-bg-mobile.webp", search: "" },
+      { pathname: "/hero-bg-tablet.webp", search: "" },
+      { pathname: "/what-you-see.webp", search: "" },
+    ],
+  },
   // SEO/security baseline. No CSP here: Next renders inline styles and
   // inline scripts for the bootstrap, so a strict CSP would need careful
   // opt-in (nonces/hashes) — out of scope for this iteration.
@@ -34,3 +47,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

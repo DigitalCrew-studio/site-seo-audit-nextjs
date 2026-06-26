@@ -83,13 +83,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ["/twitter-image"],
   },
-  icons: {
-    icon: [
-      { url: "/icon", type: "image/png", sizes: "32x32" },
-    ],
-    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
-  },
-  manifest: "/manifest.webmanifest",
+  // Icons and PWA manifest are wired through file conventions in `src/app/`
+  // (`favicon.ico`, `icon.png`, `icon16.png`, `apple-icon.png`, `icon192.png`,
+  // `icon512.png`, `manifest.webmanifest`). Next.js auto-emits the right
+  // `<link>` tags from those files, so we don't repeat them here.
   robots: {
     index: true,
     follow: true,

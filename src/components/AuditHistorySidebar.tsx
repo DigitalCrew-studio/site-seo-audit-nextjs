@@ -3,7 +3,7 @@
 import type { ComponentProps, MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { FileClock, Plus, Trash2, Globe2 } from "lucide-react";
+import { FileClock, Plus, Trash2, Globe2, Radio, Square } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import type { SavedAudit, SavedAuditStatus } from "@/store/auditStore";
 import { Badge, Panel } from "@/components/ui";
@@ -94,13 +94,17 @@ function ConfirmDelete({
 function SavedAuditCard({
   audit,
   isActive,
+  isLiveRunInBackground,
   onOpen,
   onDelete,
+  onStopRun,
 }: {
   audit: SavedAudit;
   isActive: boolean;
+  isLiveRunInBackground: boolean;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  onStopRun: (id: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -112,6 +116,8 @@ function SavedAuditCard({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirming]);
+
+  const isLiveRun = audit.status === "running";
 
   return (
     <li>
@@ -128,12 +134,22 @@ function SavedAuditCard({
         className={`group flex w-full cursor-pointer flex-col gap-1.5 rounded-lg border bg-surface px-3 py-2.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/15 ${
           isActive
             ? "border-ink/40 shadow-[0_1px_0_0_rgba(27,27,25,0.06)]"
-            : "border-line hover:border-line-strong"
+            : isLiveRunInBackground
+              ? "border-accent/30 ring-1 ring-accent/15"
+              : "border-line hover:border-line-strong"
         }`}
       >
         <div className="flex items-start gap-2">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-paper text-muted">
-            <Globe2 className="h-3.5 w-3.5" />
+          <span
+            className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted ${
+              isLiveRun ? "bg-accent-soft text-accent" : "bg-paper"
+            }`}
+          >
+            {isLiveRun ? (
+              <Radio className="h-3.5 w-3.5" />
+            ) : (
+              <Globe2 className="h-3.5 w-3.5" />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <p
@@ -158,6 +174,19 @@ function SavedAuditCard({
                 onDelete(audit.id);
               }}
             />
+          ) : isLiveRunInBackground ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStopRun(audit.id);
+              }}
+              title="Остановить аудит"
+              aria-label="Остановить аудит"
+              className="ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:bg-paper hover:text-red-700 focus:opacity-100"
+            >
+              <Square className="h-3 w-3 fill-current" />
+            </button>
           ) : (
             <button
               type="button"
@@ -174,9 +203,16 @@ function SavedAuditCard({
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <Badge tone={statusTone(audit.status)} className="px-1.5 py-0.5">
-            {statusLabel(audit.status)}
-          </Badge>
+          {isLiveRun ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent">
+              <span className="pulse-dot" />
+              {isLiveRunInBackground ? "В фоне" : "Идёт"}
+            </span>
+          ) : (
+            <Badge tone={statusTone(audit.status)} className="px-1.5 py-0.5">
+              {statusLabel(audit.status)}
+            </Badge>
+          )}
           {audit.summary && (
             <span className="truncate text-[12px] text-muted" title={audit.summary}>
               {audit.summary}
@@ -189,17 +225,29 @@ function SavedAuditCard({
 }
 
 export function AuditHistorySidebar() {
-  const { savedAudits, activeSavedAuditId, newAudit, loadSavedAudit, deleteSavedAudit, hydrateSavedAudits } =
-    useAuditStore(
-      useShallow((s) => ({
-        savedAudits: s.savedAudits,
-        activeSavedAuditId: s.activeSavedAuditId,
-        newAudit: s.newAudit,
-        loadSavedAudit: s.loadSavedAudit,
-        deleteSavedAudit: s.deleteSavedAudit,
-        hydrateSavedAudits: s.hydrateSavedAudits,
-      }))
-    );
+  const {
+    savedAudits,
+    activeSavedAuditId,
+    running,
+    backgroundRunActive,
+    newAudit,
+    loadSavedAudit,
+    deleteSavedAudit,
+    cancelBackgroundRun,
+    hydrateSavedAudits,
+  } = useAuditStore(
+    useShallow((s) => ({
+      savedAudits: s.savedAudits,
+      activeSavedAuditId: s.activeSavedAuditId,
+      running: s.running,
+      backgroundRunActive: s.backgroundRunActive,
+      newAudit: s.newAudit,
+      loadSavedAudit: s.loadSavedAudit,
+      deleteSavedAudit: s.deleteSavedAudit,
+      cancelBackgroundRun: s.cancelBackgroundRun,
+      hydrateSavedAudits: s.hydrateSavedAudits,
+    }))
+  );
 
   useEffect(() => {
     hydrateSavedAudits();
@@ -213,8 +261,14 @@ export function AuditHistorySidebar() {
     [savedAudits]
   );
 
+  // The audit that is currently streaming is the one with status === "running".
+  // It lives "in the background" if the user is viewing a different audit.
+  const liveRun = sorted.find((a) => a.status === "running");
+  const isLiveRunInBackground =
+    !!liveRun && backgroundRunActive && liveRun.id !== activeSavedAuditId;
+
   return (
-    <Panel as="aside" className="flex h-full flex-col">
+    <Panel as="aside" className="flex h-full max-h-[calc(100vh-120px)] flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
           <FileClock className="h-4 w-4 text-muted" />
@@ -243,8 +297,10 @@ export function AuditHistorySidebar() {
                 key={audit.id}
                 audit={audit}
                 isActive={audit.id === activeSavedAuditId}
+                isLiveRunInBackground={isLiveRunInBackground && audit.id === liveRun?.id}
                 onOpen={loadSavedAudit}
                 onDelete={deleteSavedAudit}
+                onStopRun={() => cancelBackgroundRun()}
               />
             ))}
           </ul>

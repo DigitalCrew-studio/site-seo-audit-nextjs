@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Loader2, ArrowRight, Settings, AlertTriangle } from "lucide-react";
+import { Loader2, ArrowRight, Settings, AlertTriangle, Radio } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 import {
@@ -24,7 +24,9 @@ export function AuditForm() {
     url,
     setUrl,
     running,
+    backgroundRunActive,
     runAudit,
+    cancelBackgroundRun,
     error,
     hydrate,
     fetchModels,
@@ -35,7 +37,9 @@ export function AuditForm() {
       url: s.url,
       setUrl: s.setUrl,
       running: s.running,
+      backgroundRunActive: s.backgroundRunActive,
       runAudit: s.runAudit,
+      cancelBackgroundRun: s.cancelBackgroundRun,
       error: s.error,
       hydrate: s.hydrate,
       fetchModels: s.fetchModels,
@@ -55,6 +59,8 @@ export function AuditForm() {
   const missingModel = !modelId;
   const missingUrl = !url.trim();
   const settingsIncomplete = missingApiKey || missingModel;
+  // While a run is on screen we keep the button busy, but a background run
+  // does not block starting a new one (clicking it will cancel the old run).
   const disableRun = running || settingsIncomplete || missingUrl;
 
   return (
@@ -65,6 +71,8 @@ export function AuditForm() {
         meta={
           running ? (
             <Badge tone="accent">идёт аудит</Badge>
+          ) : backgroundRunActive ? (
+            <Badge tone="accent">идёт в фоне</Badge>
           ) : settingsIncomplete ? (
             <Badge tone="neutral">нужны настройки</Badge>
           ) : (
@@ -105,6 +113,27 @@ export function AuditForm() {
           </StatusNotice>
         )}
 
+        {backgroundRunActive && (
+          <StatusNotice
+            role="alert"
+            tone="info"
+            icon={<Radio className="h-4 w-4 text-accent" />}
+            heading="Аудит работает в фоне"
+            action={
+              <Button
+                variant="secondary"
+                onClick={cancelBackgroundRun}
+                className="shrink-0"
+              >
+                Остановить
+              </Button>
+            }
+          >
+            Откройте запущенный аудит в истории слева, чтобы наблюдать за ним
+            в реальном времени, либо остановите его и запустите новый.
+          </StatusNotice>
+        )}
+
         <div className="space-y-2">
           <FieldLabel htmlFor="audit-url" hint="например: example.com">
             URL сайта
@@ -132,7 +161,9 @@ export function AuditForm() {
         <p className="text-sm text-muted">
           {running
             ? "Браузер обходит сайт и снимает технические показатели…"
-            : "Аудит запускается в headless Chromium и формирует отчёт с доказательствами."}
+            : backgroundRunActive
+              ? "Сейчас идёт другой аудит. Можно запустить новый — текущий будет остановлен."
+              : "Аудит запускается в headless Chromium и формирует отчёт с доказательствами."}
         </p>
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           {settingsIncomplete && (
@@ -155,6 +186,11 @@ export function AuditForm() {
             {running ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" /> Идёт аудит…
+              </>
+            ) : backgroundRunActive ? (
+              <>
+                Остановить и запустить новый
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </>
             ) : (
               <>

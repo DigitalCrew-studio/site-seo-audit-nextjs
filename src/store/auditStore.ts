@@ -37,6 +37,11 @@ const MAX_REPORT_IMAGE_BYTES_PER_AUDIT = 4_000_000;
 // Non-reactive runtime handles (kept outside React/store state).
 let abortController: AbortController | null = null;
 let runId = 0;
+// Tracks the saved-audit id of the run currently being streamed. Decoupling
+// this from `activeSavedAuditId` (which the user can change by clicking other
+// sidebar entries) is what keeps late SSE events from hijacking the wrong
+// saved audit and lets the run keep going in the background.
+let currentRunAuditId: string | null = null;
 
 function now(): string {
   return new Date().toLocaleTimeString();
@@ -123,6 +128,10 @@ type AuditState = {
   loadingModels: boolean;
   // ----- audit state -----
   running: boolean;
+  // True when a run is alive in the background (i.e. the user has navigated
+  // to a different saved audit while the SSE is still streaming). Drives the
+  // "Идёт в фоне" affordance and the Stop button in the form.
+  backgroundRunActive: boolean;
   logs: LogEntry[];
   screenshots: ScreenshotEntry[];
   reportImages: ReportImageEntry[];
@@ -149,6 +158,7 @@ type AuditState = {
   runAudit: () => Promise<void>;
   newAudit: () => void;
   loadSavedAudit: (id: string) => void;
+  cancelBackgroundRun: () => void;
   deleteSavedAudit: (id: string) => void;
 };
 
@@ -342,23 +352,77 @@ export const useAuditStore = create<AuditState>((set, get) => {
     });
   };
 
-  // Persist terminal states from the same state patch that updates the UI.
+  // Update the saved-audits entry for the currently-streaming audit. Goes
+  // through the saved record itself rather than the main state so that the
+  // background run keeps progressing even while the user is viewing a
+  // different audit.
+  const updateRunningSavedAudit = (
+    updater: (audit: SavedAudit) => SavedAudit
+  ) => {
+    if (!currentRunAuditId) return;
+    set((s) => {
+      const audit = s.savedAudits.find((entry) => entry.id === currentRunAuditId);
+      if (!audit) return {};
+      // Once the audit reaches a terminal state (completed/failed/interrupted)
+      // we must not let late SSE events (status/tool/screenshot/report_image)
+      // re-mark it as "running". This guards against the trailing
+      // "Audit completed with N tool error(s)" status event emitted after "done".
+      if (audit.status !== "running") return {};
+      const next = s.savedAudits.map((entry) =>
+        entry.id === currentRunAuditId ? updater(entry) : entry
+      );
+      writeSavedAuditsToStorage(next);
+      return { savedAudits: next };
+    });
+  };
+
+  // The main state is "live-attached" when it is showing the audit that is
+  // currently streaming. While false, SSE handlers skip touching the main
+  // state to avoid clobbering the audit the user is reading.
+  const isViewingLiveRun = () =>
+    currentRunAuditId !== null && get().activeSavedAuditId === currentRunAuditId;
+
+  // Just flip the status of the running audit (used for cancel/new-audit).
+  const markRunningAsInterrupted = () => {
+    if (!currentRunAuditId) return;
+    updateRunningSavedAudit((audit) => ({
+      ...audit,
+      status: "interrupted",
+      updatedAt: nowIso(),
+    }));
+  };
+
+  // Persist terminal states (completed / failed / interrupted) by patching
+  // the running audit's saved record directly, then conditionally mirroring
+  // the patch into the main state only if the user is still attached.
   const persistTerminalSnapshot = (
     patch: Partial<AuditState>,
     status: SavedAuditStatus
   ) => {
+    if (!currentRunAuditId) return;
     set((s) => {
-      const nextState: AuditState = { ...s, ...patch };
-      const snapshot = buildSavedAuditSnapshot(nextState, status);
-      if (!snapshot) return patch;
+      const audit = s.savedAudits.find((entry) => entry.id === currentRunAuditId);
+      if (!audit) return {};
+      const updated: SavedAudit = {
+        ...audit,
+        status,
+        updatedAt: nowIso(),
+      };
+      if (patch.report !== undefined) {
+        updated.report = patch.report;
+        updated.summary = summarizeReport(patch.report) ?? audit.summary;
+      }
+      if (patch.error !== undefined) {
+        updated.error = patch.error || undefined;
+      }
       const without = s.savedAudits.filter(
-        (entry) => entry.id !== snapshot.id
+        (entry) => entry.id !== currentRunAuditId
       );
-      const next = [snapshot, ...without].slice(0, MAX_SAVED_AUDITS);
+      const next = [updated, ...without].slice(0, MAX_SAVED_AUDITS);
       if (next.length < without.length + 1) {
         const liveIds = new Set<string>();
-        for (const audit of next) {
-          for (const id of collectImageIds(audit)) liveIds.add(id);
+        for (const entry of next) {
+          for (const id of collectImageIds(entry)) liveIds.add(id);
         }
         const removed = without.slice(next.length - without.length);
         for (const dropped of removed) {
@@ -369,11 +433,10 @@ export const useAuditStore = create<AuditState>((set, get) => {
         }
       }
       writeSavedAuditsToStorage(next);
-      return {
-        ...patch,
-        savedAudits: next,
-        activeSavedAuditId: snapshot.id,
-      };
+      const liveAttached = s.activeSavedAuditId === currentRunAuditId;
+      return liveAttached
+        ? { ...patch, savedAudits: next }
+        : { savedAudits: next };
     });
   };
 
@@ -386,6 +449,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     url: "",
     loadingModels: false,
     running: false,
+    backgroundRunActive: false,
     logs: [],
     screenshots: [],
     reportImages: [],
@@ -503,18 +567,18 @@ export const useAuditStore = create<AuditState>((set, get) => {
     },
 
     newAudit: () => {
-      // If there is an active run in progress, mark it as interrupted (only
-      // when there is something useful to keep). Otherwise just clear state.
-      const before = get();
-      if (before.running) {
+      // If there is any run in progress (foreground or background), kill it
+      // and persist it as interrupted before clearing the workspace.
+      if (currentRunAuditId) {
+        markRunningAsInterrupted();
         abortController?.abort();
         abortController = null;
         runId += 1;
-        const interrupted = buildSavedAuditSnapshot(before, "interrupted");
-        if (interrupted) persistAudit(interrupted, { pruneOrphans: true });
+        currentRunAuditId = null;
       }
       set({
         running: false,
+        backgroundRunActive: false,
         logs: [],
         screenshots: [],
         reportImages: [],
@@ -525,20 +589,41 @@ export const useAuditStore = create<AuditState>((set, get) => {
       });
     },
 
-    loadSavedAudit: (id) => {
-      const audit = get().savedAudits.find((entry) => entry.id === id);
-      if (!audit) return;
-      const isActiveLiveRun = get().running && get().activeSavedAuditId === id;
-      if (isActiveLiveRun) {
-        // Clicking the current running audit should keep the live in-memory
-        // state instead of replacing it with a partial snapshot. Just make
-        // sure the active id is set so the sidebar highlights it.
-        set({ activeSavedAuditId: id });
-        return;
-      }
+    cancelBackgroundRun: () => {
+      if (!currentRunAuditId) return;
+      markRunningAsInterrupted();
       abortController?.abort();
       abortController = null;
       runId += 1;
+      currentRunAuditId = null;
+      set((s) => ({
+        running: false,
+        backgroundRunActive: false,
+      }));
+    },
+
+    loadSavedAudit: (id) => {
+      const audit = get().savedAudits.find((entry) => entry.id === id);
+      if (!audit) return;
+      const isLiveRun = currentRunAuditId === id;
+      // Clicking the running audit while it is already in the foreground is
+      // a no-op aside from making sure the sidebar highlight is in sync.
+      if (isLiveRun && get().running) {
+        set({ activeSavedAuditId: id });
+        return;
+      }
+
+      // Only kill the in-flight stream when there is no run in progress.
+      // When a run is alive (foreground or background) we keep it streaming
+      // and just switch the workspace over to the clicked audit.
+      const hasLiveRun =
+        get().running || get().backgroundRunActive || currentRunAuditId !== null;
+      if (!hasLiveRun) {
+        abortController?.abort();
+        abortController = null;
+        runId += 1;
+      }
+
       // Rebuild runtime images from saved metadata. Screenshots are loaded
       // from IndexedDB via imageId when available; report images keep their
       // `url` (remote OG/Twitter URLs still work) and the screenshot-kind
@@ -573,8 +658,11 @@ export const useAuditStore = create<AuditState>((set, get) => {
         profile: meta.profile,
         viewport: meta.viewport,
       }));
+
+      const switchingToLiveRun = isLiveRun;
       set({
-        running: false,
+        running: switchingToLiveRun,
+        backgroundRunActive: hasLiveRun && !switchingToLiveRun,
         logs: audit.logs,
         screenshots,
         reportImages,
@@ -609,13 +697,17 @@ export const useAuditStore = create<AuditState>((set, get) => {
       const { apiKey, modelId, url, group, language, debugMode } = get();
       if (!apiKey.trim() || !modelId || !url.trim()) return;
 
-      // If there is an active run in progress, mark it as interrupted (only
-      // when there is something useful to keep) before we wipe the live
-      // state. This avoids the race where a fresh run would clear the
-      // previous run's logs and overwrite the saved audit.
-      if (get().running) {
-        const interrupted = buildSavedAuditSnapshot(get(), "interrupted");
-        if (interrupted) persistAudit(interrupted, { pruneOrphans: true });
+      // If a previous run is still in flight (in the foreground or the
+      // background), tear it down and persist it as interrupted before we
+      // commit to a new run. The main state we read here may belong to a
+      // different audit the user is viewing, so we go through the saved
+      // record directly via currentRunAuditId.
+      if (currentRunAuditId) {
+        markRunningAsInterrupted();
+        abortController?.abort();
+        abortController = null;
+        runId += 1;
+        currentRunAuditId = null;
       }
 
       // Abort any previous run so a fresh click always starts a new audit.
@@ -625,12 +717,9 @@ export const useAuditStore = create<AuditState>((set, get) => {
       abortController = controller;
       const id = ++runId;
 
-      const setIfCurrent = (fn: () => void) => {
-        if (runId === id) fn();
-      };
-
       set({
         running: true,
+        backgroundRunActive: false,
         report: "",
         reportOpen: false,
         error: "",
@@ -639,22 +728,35 @@ export const useAuditStore = create<AuditState>((set, get) => {
         reportImages: [],
         activeSavedAuditId: undefined,
       });
-      addLog({
+      const firstLog: LogEntry = {
         type: "status",
         message:
           language === "ru" ? "Подготовка к аудиту..." : "Preparing audit...",
         time: now(),
-      });
+      };
+      addLog(firstLog);
 
       // Create the saved audit record immediately so the sidebar shows it
-      // as "Идёт" while the SSE stream is in flight.
+      // as "Идёт" while the SSE stream is in flight. We capture its id and
+      // use it as the single source of truth for every later save during
+      // this run, regardless of where the user is looking in the workspace.
       const initialSnapshot = buildSavedAuditSnapshot(get(), "running");
-      if (initialSnapshot) persistImmediateRunning(initialSnapshot);
+      if (initialSnapshot) {
+        persistImmediateRunning(initialSnapshot);
+        currentRunAuditId = initialSnapshot.id;
+        set({ activeSavedAuditId: initialSnapshot.id });
+      }
 
-      const refreshRunningSnapshot = () => {
-        const running = buildSavedAuditSnapshot(get(), "running");
-        if (running) persistImmediateRunning(running);
-      };
+      // The saved-audit record we are appending to. Recomputed each call
+      // because the in-memory `savedAudits` list is the truth we read from
+      // to keep this self-consistent (e.g. after `pruneOrphans` trimming).
+      const appendToRunningSaved = (log: LogEntry) =>
+        updateRunningSavedAudit((audit) => ({
+          ...audit,
+          logs: [...audit.logs, log].slice(-MAX_SAVED_LOG_ENTRIES_PER_AUDIT),
+          status: "running",
+          updatedAt: nowIso(),
+        }));
 
       try {
         const res = await fetch("/api/audit", {
@@ -675,25 +777,32 @@ export const useAuditStore = create<AuditState>((set, get) => {
 
         await consumeSSE(res.body, {
           onStatus: (p) => {
-            addLog({ type: "status", message: p.message, phase: p.phase, time: now() });
-            refreshRunningSnapshot();
+            if (runId !== id) return;
+            const log: LogEntry = { type: "status", message: p.message, phase: p.phase, time: now() };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
           },
           onTool: (p) => {
-            addLog({ type: "tool", name: p.name, args: p.args, time: now() });
-            refreshRunningSnapshot();
+            if (runId !== id) return;
+            const log: LogEntry = { type: "tool", name: p.name, args: p.args, time: now() };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
           },
           onToolError: (p) => {
-            addLog({
+            if (runId !== id) return;
+            const log: LogEntry = {
               type: "tool_error",
               name: p.name,
               args: p.args,
               error: p.error,
               time: now(),
-            });
-            refreshRunningSnapshot();
+            };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
           },
           onToolEnd: (p) => {
-            addLog({
+            if (runId !== id) return;
+            const log: LogEntry = {
               type: "tool_end",
               name: p.name,
               ok: p.ok,
@@ -701,106 +810,135 @@ export const useAuditStore = create<AuditState>((set, get) => {
               bytes: p.bytes,
               error: p.error,
               time: now(),
-            });
-            refreshRunningSnapshot();
+            };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
           },
           onDebug: (p) => {
-            addLog({
+            if (runId !== id) return;
+            const log: LogEntry = {
               type: "debug",
               message: p.message,
               data: p.data,
               time: now(),
-            });
-            refreshRunningSnapshot();
+            };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
           },
           onScreenshot: (p) => {
-            // Convert the incoming base64 to a Blob and persist to IndexedDB
-            // before adding the metadata entry. We use the same id as the
-            // runtime `imageId` so saved audits reference the same blob.
+            if (runId !== id) return;
+            // Persist the base64 payload to IndexedDB so saved audits can
+            // reference the same blob.
             const blob = base64ToBlob(p.base64, p.mimeType);
             const imageId = p.id;
             if (blob) {
               void saveAuditImage(imageId, blob);
             }
-            setIfCurrent(() => {
-              set((s) => {
-                const nextShot: ScreenshotEntry = {
-                  id: p.id,
-                  url: p.url,
-                  mimeType: p.mimeType,
-                  bytes: p.bytes,
-                  takenAt: p.takenAt,
-                  storage: "indexeddb",
-                  imageId,
-                  source: p.source,
-                  profile: p.profile,
-                  viewport: p.viewport,
-                };
-                const screenshots = [...s.screenshots, nextShot].slice(-MAX_SCREENSHOTS);
-                const sourceLabel =
-                  p.source ??
-                  (p.profile
-                    ? `responsive rendering · ${p.profile}`
-                    : "screenshot");
-                const reportImage: ReportImageEntry = {
-                  id: p.id,
-                  kind: "screenshot",
-                  source: sourceLabel,
-                  url: p.url ?? "",
-                  pageUrl: p.url,
-                  alt: p.url ?? sourceLabel,
-                  mimeType: p.mimeType,
-                  bytes: p.bytes,
-                  takenAt: p.takenAt,
-                  storage: "indexeddb",
-                  imageId,
-                  profile: p.profile,
-                  viewport: p.viewport,
-                };
-                const reportImages = [...s.reportImages, reportImage].slice(-MAX_REPORT_IMAGES);
-                return { screenshots, reportImages };
-              });
-              // Refresh the sidebar with the new image metadata so its
-              // counters stay in sync with the live run.
-              refreshRunningSnapshot();
-            });
+            const sourceLabel =
+              p.source ??
+              (p.profile
+                ? `responsive rendering · ${p.profile}`
+                : "screenshot");
+            const nextShot: ScreenshotEntry = {
+              id: p.id,
+              url: p.url,
+              mimeType: p.mimeType,
+              bytes: p.bytes,
+              takenAt: p.takenAt,
+              storage: "indexeddb",
+              imageId,
+              source: p.source,
+              profile: p.profile,
+              viewport: p.viewport,
+            };
+            const reportImage: ReportImageEntry = {
+              id: p.id,
+              kind: "screenshot",
+              source: sourceLabel,
+              url: p.url ?? "",
+              pageUrl: p.url,
+              alt: p.url ?? sourceLabel,
+              mimeType: p.mimeType,
+              bytes: p.bytes,
+              takenAt: p.takenAt,
+              storage: "indexeddb",
+              imageId,
+              profile: p.profile,
+              viewport: p.viewport,
+            };
+            updateRunningSavedAudit((audit) => ({
+              ...audit,
+              screenshots: [
+                ...audit.screenshots,
+                toSavedScreenshotMeta(nextShot),
+              ].slice(-MAX_SAVED_SCREENSHOTS_PER_AUDIT),
+              reportImages: [
+                ...audit.reportImages,
+                toSavedImageMeta(reportImage),
+              ].slice(-MAX_SAVED_REPORT_IMAGES_PER_AUDIT),
+              status: "running",
+              updatedAt: nowIso(),
+            }));
+            if (isViewingLiveRun()) {
+              set((s) => ({
+                screenshots: [...s.screenshots, nextShot].slice(-MAX_SCREENSHOTS),
+                reportImages: [...s.reportImages, reportImage].slice(-MAX_REPORT_IMAGES),
+              }));
+            }
           },
-          onReportImage: (p) =>
-            setIfCurrent(() => {
-              set((s) => {
-                // Dedupe by kind+source+url. Remote (OG/Twitter) entries
-                // keep their original URL; no IndexedDB write is required.
-                const exists = s.reportImages.some(
-                  (image) =>
-                    image.kind === p.kind &&
-                    image.source === p.source &&
-                    image.url === p.url
-                );
-                if (exists) return {};
-                const next: ReportImageEntry = {
-                  id: p.id,
-                  kind: p.kind,
-                  source: p.source,
-                  url: p.url,
-                  pageUrl: p.pageUrl,
-                  alt: p.alt,
-                  mimeType: p.mimeType,
-                  bytes: p.bytes,
-                  width: p.width,
-                  height: p.height,
-                  status: p.status,
-                  takenAt: p.takenAt,
-                  storage: "remote",
-                };
-                return { reportImages: [...s.reportImages, next].slice(-MAX_REPORT_IMAGES) };
-              });
-              refreshRunningSnapshot();
-            }),
+          onReportImage: (p) => {
+            if (runId !== id) return;
+            // Dedupe by kind+source+url. Remote (OG/Twitter) entries
+            // keep their original URL; no IndexedDB write is required.
+            const liveAudit = get().savedAudits.find(
+              (entry) => entry.id === currentRunAuditId
+            );
+            if (
+              liveAudit?.reportImages.some(
+                (image) =>
+                  image.kind === p.kind &&
+                  image.source === p.source &&
+                  image.url === p.url
+              )
+            ) {
+              return;
+            }
+            const next: ReportImageEntry = {
+              id: p.id,
+              kind: p.kind,
+              source: p.source,
+              url: p.url,
+              pageUrl: p.pageUrl,
+              alt: p.alt,
+              mimeType: p.mimeType,
+              bytes: p.bytes,
+              width: p.width,
+              height: p.height,
+              status: p.status,
+              takenAt: p.takenAt,
+              storage: "remote",
+            };
+            updateRunningSavedAudit((audit) => ({
+              ...audit,
+              reportImages: [...audit.reportImages, toSavedImageMeta(next)].slice(
+                -MAX_SAVED_REPORT_IMAGES_PER_AUDIT
+              ),
+              status: "running",
+              updatedAt: nowIso(),
+            }));
+            if (isViewingLiveRun()) {
+              set((s) => ({
+                reportImages: [...s.reportImages, next].slice(-MAX_REPORT_IMAGES),
+              }));
+            }
+          },
           onError: (p) => {
             // If this run was already superseded, do not let the late
             // error event clobber the new active saved audit.
             if (runId !== id) return;
-            addLog({ type: "error", message: p.message, time: now() });
+            const log: LogEntry = { type: "error", message: p.message, time: now() };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
             persistTerminalSnapshot({ error: p.message }, "failed");
           },
           onDone: (p) => {
@@ -814,9 +952,10 @@ export const useAuditStore = create<AuditState>((set, get) => {
           (err.name === "AbortError" ||
             /abort|canceled|cancelled|networkerror|load failed|failed to fetch/i.test(err.message));
         if (isAbortLike) {
-          // Only mark interrupted for the run that was actually aborted
-          // (i.e. the still-current one). Late aborts from a superseded
-          // run would otherwise wipe the new live state.
+          // Aborts triggered by cancelBackgroundRun / newAudit / superseded
+          // runAudit have already persisted the "interrupted" snapshot, so
+          // there is nothing more to do here. A real network abort while
+          // this run is still current gets persisted as "interrupted" too.
           if (runId === id) {
             persistTerminalSnapshot({}, "interrupted");
           }
@@ -824,12 +963,15 @@ export const useAuditStore = create<AuditState>((set, get) => {
         }
         const msg = err instanceof Error ? err.message : String(err);
         if (runId === id) {
-          addLog({ type: "error", message: msg, time: now() });
+          const log: LogEntry = { type: "error", message: msg, time: now() };
+          appendToRunningSaved(log);
+          if (isViewingLiveRun()) addLog(log);
           persistTerminalSnapshot({ error: msg }, "failed");
         }
       } finally {
         if (runId === id) {
-          set({ running: false });
+          currentRunAuditId = null;
+          set({ running: false, backgroundRunActive: false });
           abortController = null;
         }
       }
