@@ -11,6 +11,26 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: dirname(fileURLToPath(import.meta.url)),
   },
+  poweredByHeader: false,
+  // SEO/security baseline. No CSP here: Next renders inline styles and
+  // inline scripts for the bootstrap, so a strict CSP would need careful
+  // opt-in (nonces/hashes) — out of scope for this iteration.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

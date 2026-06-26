@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -18,6 +19,44 @@ import {
   Compass,
 } from "lucide-react";
 import { AppBar } from "@/components/AppBar";
+
+const SITE_URL = "https://seofrendly.ru";
+const SITE_NAME = "Seofriendly";
+const SITE_DESCRIPTION =
+  "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, редиректов, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
+
+export const metadata: Metadata = {
+  title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
+  description: SITE_DESCRIPTION,
+  alternates: {
+    canonical: `${SITE_URL}/`,
+    languages: {
+      "ru-RU": `${SITE_URL}/`,
+    },
+  },
+  openGraph: {
+    title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
+    description: SITE_DESCRIPTION,
+    url: `${SITE_URL}/`,
+    type: "website",
+    locale: "ru_RU",
+    siteName: SITE_NAME,
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
+    description: SITE_DESCRIPTION,
+    images: ["/twitter-image"],
+  },
+};
 
 type Capability = {
   title: string;
@@ -168,9 +207,125 @@ const PROOF = [
   { label: "Аккаунт", value: "не нужен" },
 ];
 
+const FAQ = [
+  {
+    q: "Что такое Seofriendly и что делает сервис?",
+    a: "Seofriendly — это бесплатный онлайн-SEO-аудит сайта. Достаточно ввести URL — headless-браузер обойдёт страницы, соберёт технические факты (HTTP-коды, sitemap.xml, robots.txt, canonical, мета-теги, разметку, скорость), а нейросеть превратит их в структурированный отчёт с приоритетами и доказательствами.",
+  },
+  {
+    q: "Аудит действительно бесплатный? Нужна ли регистрация?",
+    a: "Да, бесплатный и без регистрации. Не нужен доступ к Google Search Console, не нужны выгрузки ключевых слов или файлы сайта — только открытый URL. В рамках аудита используется API выбранной нейросети, ключ к которому пользователь вводит локально в настройках и который хранится только в его браузере.",
+  },
+  {
+    q: "Какие данные нужны, чтобы запустить аудит?",
+    a: "Только URL проверяемого сайта. Дополнительно в настройках указывается API-ключ провайдера (например, OpenRouter) и модель, которая будет формировать текст отчёта. Эти значения хранятся локально в браузере и не передаются на сторонние серверы, кроме самого запроса к API пользователя.",
+  },
+  {
+    q: "Что именно анализирует нейросеть?",
+    a: "Нейросеть получает только те факты, которые собрала браузерная проверка: коды ответов, редиректы, заголовки безопасности, содержимое sitemap.xml и robots.txt, canonical, title/description, Open Graph и Twitter Card, иерархию заголовков, JSON-LD/Microdata/RDFa, скриншоты и оценки Lighthouse. На их основе она формирует отчёт с приоритетами и понятными следующими шагами.",
+  },
+  {
+    q: "Где хранятся результаты аудита и история проверок?",
+    a: "История аудитов, скриншоты и отчёты сохраняются локально в браузере пользователя. Сервис не отправляет содержимое аудитов на свой сервер и не хранит API-ключи — всё, что требует приватности, остаётся на устройстве. Очистить историю можно в настройках браузера или в соответствующем разделе интерфейса.",
+  },
+];
+
+function buildStructuredData() {
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: `${SITE_URL}/`,
+        name: SITE_NAME,
+        alternateName: "Seofriendly seo-аудит",
+        description: SITE_DESCRIPTION,
+        inLanguage: "ru-RU",
+        publisher: { "@id": `${SITE_URL}/#organization` },
+      },
+      {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/#webpage`,
+        url: `${SITE_URL}/`,
+        name: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
+        description: SITE_DESCRIPTION,
+        inLanguage: "ru-RU",
+        isPartOf: { "@id": `${SITE_URL}/#website` },
+        about: { "@id": `${SITE_URL}/#webapplication` },
+        primaryImageOfPage: {
+          "@type": "ImageObject",
+          url: `${SITE_URL}/opengraph-image`,
+          width: 1200,
+          height: 630,
+        },
+      },
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: SITE_NAME,
+        url: `${SITE_URL}/`,
+        logo: {
+          "@type": "ImageObject",
+          url: `${SITE_URL}/icon`,
+        },
+      },
+      {
+        "@type": "WebApplication",
+        "@id": `${SITE_URL}/#webapplication`,
+        name: SITE_NAME,
+        url: `${SITE_URL}/audit`,
+        applicationCategory: "DeveloperApplication",
+        applicationSubCategory: "SEO Audit Tool",
+        operatingSystem: "All",
+        browserRequirements: "Requires a modern browser with JavaScript and network access",
+        inLanguage: "ru-RU",
+        description:
+          "Бесплатный SEO-аудит сайта нейросетью: браузерная проверка sitemap.xml, robots.txt, canonical, мета-тегов, скорости и адаптивности с отчётом от нейросети.",
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "RUB",
+          availability: "https://schema.org/InStock",
+        },
+        featureList: [
+          "Бесплатный SEO-аудит без регистрации",
+          "Анализ sitemap.xml, robots.txt, canonical",
+          "Проверка HTTP, редиректов и заголовков безопасности",
+          "Аудит мета-тегов, Open Graph и Twitter Card",
+          "Проверка структурированных данных (JSON-LD, Microdata, RDFa)",
+          "Оценка Core Web Vitals и адаптивности через Lighthouse",
+          "Скриншоты и визуальные доказательства",
+          "Отчёт от нейросети с приоритетами",
+        ],
+      },
+      {
+        "@type": "FAQPage",
+        "@id": `${SITE_URL}/#faq`,
+        url: `${SITE_URL}/`,
+        inLanguage: "ru-RU",
+        isPartOf: { "@id": `${SITE_URL}/#webpage` },
+        mainEntity: FAQ.map(({ q, a }) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: a,
+          },
+        })),
+      },
+    ],
+  };
+}
+
 export default function HomePage() {
+  const structuredData = buildStructuredData();
   return (
     <main className="min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <AppBar />
 
       <div className="paper-grid">
@@ -408,12 +563,46 @@ export default function HomePage() {
             </div>
           </section>
 
+          {/* FAQ */}
+          <section className="mt-14" aria-labelledby="faq-heading">
+            <div className="mb-6 flex items-baseline justify-between">
+              <h2
+                id="faq-heading"
+                className="text-lg font-semibold tracking-tight text-ink"
+              >
+                Частые вопросы
+              </h2>
+              <span className="eyebrow text-faint">FAQ</span>
+            </div>
+            <div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line">
+              {FAQ.map((item) => (
+                <details
+                  key={item.q}
+                  className="group bg-surface px-5 py-4 [&[open]]:bg-paper/40"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[14px] font-semibold text-ink">
+                    <span>{item.q}</span>
+                    <span
+                      aria-hidden="true"
+                      className="font-mono text-base text-muted transition group-open:rotate-45"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                    {item.a}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </section>
+
           {/* Final CTA */}
           <section className="mt-14 flex flex-col items-start gap-4 rounded-2xl border border-ink bg-ink p-8 text-paper sm:flex-row sm:items-center sm:justify-between sm:p-10">
             <div className="max-w-xl">
               <span className="eyebrow text-paper/60">готовы проверить сайт?</span>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Запустите бесплатный SEO-аудит за&nbsp;пару&nbsp;минут
+                Запустите бесплатный SEO-аудит за&nbsp;пару&nbsp;минут
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-paper/70">
                 Введите URL, нажмите «Запустить аудит» — и через несколько минут
