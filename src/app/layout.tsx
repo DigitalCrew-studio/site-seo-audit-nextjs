@@ -27,6 +27,8 @@ const YANDEX_METRIKA_ID = (
   process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID ?? ""
 ).trim();
 const YANDEX_METRIKA_ENABLED = /^\d+$/.test(YANDEX_METRIKA_ID);
+const ENABLE_WEBVISOR = process.env.NEXT_PUBLIC_ENABLE_WEBVISOR === "true";
+const ENABLE_CLICKMAP = process.env.NEXT_PUBLIC_ENABLE_CLICKMAP === "true";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -128,16 +130,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   m[i].l=1*new Date();
                   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
                   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-                })(window, document,'script','https://mc.yandex.com/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
+                })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
 
-                ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+                ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:${ENABLE_WEBVISOR}, clickmap:${ENABLE_CLICKMAP}, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
               `}
             </Script>
             <noscript>
               <div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- noscript analytics pixel */}
                 <img
-                  src={`https://mc.yandex.com/watch/${YANDEX_METRIKA_ID}`}
+                  src={`https://mc.yandex.ru/watch/${YANDEX_METRIKA_ID}`}
                   style={{ position: "absolute", left: "-9999px" }}
                   alt=""
                 />
