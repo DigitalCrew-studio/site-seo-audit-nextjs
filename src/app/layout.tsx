@@ -128,7 +128,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   m[i].l=1*new Date();
                   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
                   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-                })(window, document,'script','/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
+                })(window, document,'script','https://mc.yandex.com/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
 
                 ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
               `}
@@ -137,7 +137,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- noscript analytics pixel */}
                 <img
-                  src={`/metrika/watch/${YANDEX_METRIKA_ID}`}
+                  src={`https://mc.yandex.com/watch/${YANDEX_METRIKA_ID}`}
                   style={{ position: "absolute", left: "-9999px" }}
                   alt=""
                 />
