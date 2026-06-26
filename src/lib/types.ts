@@ -52,6 +52,42 @@ export type SSEReportImage = {
 };
 
 /**
+ * Metadata-only shape for a captured screenshot. The full base64 payload is
+ * intentionally NOT stored in this shape; it is persisted in IndexedDB under
+ * `imageId` and reconstructed via a Blob + object URL on demand.
+ */
+export type ScreenshotEntry = {
+  id: string;
+  url?: string;
+  mimeType: string;
+  bytes: number;
+  takenAt: string;
+  storage: "indexeddb" | "memory";
+  imageId?: string;
+};
+
+/**
+ * Metadata-only report image. `storage` distinguishes remote (OG / Twitter
+ * URLs, etc.) from in-app screenshots that live in IndexedDB.
+ */
+export type ReportImageEntry = {
+  id: string;
+  kind: "screenshot" | "social" | "schema";
+  source: string;
+  url: string;
+  pageUrl?: string;
+  alt?: string;
+  mimeType?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  status?: number;
+  takenAt: string;
+  storage: "remote" | "indexeddb" | "memory";
+  imageId?: string;
+};
+
+/**
  * Emitted by the server when `take_screenshot` succeeds. The full base64
  * payload is included for the UI gallery; the model context deliberately
  * omits it (see `shapeToolResult` in `src/lib/audit.ts`).
@@ -64,22 +100,6 @@ export type SSEScreenshot = {
   bytes: number;
   takenAt: string;
 };
-
-/**
- * Client-side store entry for a captured screenshot. Shape mirrors
- * `SSEScreenshot` so the client can store the server payload as-is and cap
- * the history without a separate transform.
- */
-export type ScreenshotEntry = {
-  id: string;
-  url?: string;
-  mimeType: string;
-  base64: string;
-  bytes: number;
-  takenAt: string;
-};
-
-export type ReportImageEntry = SSEReportImage;
 
 // ----- Client log entries (derived from SSE events) -----
 // Existing variants stay backward compatible. New `debug` and `tool_end`

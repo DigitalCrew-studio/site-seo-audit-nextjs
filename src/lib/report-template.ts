@@ -43,6 +43,7 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 | **Общий итог** | **/100** |  |  |
 
 ## Диагностика Lighthouse / производительности
+### Mobile Lighthouse
 - LCP: <цвет и шкала █/░> — <значение, норма>
 - CLS: <цвет и шкала> — <значение, норма>
 - TBT: <цвет и шкала> — <значение, норма>
@@ -52,7 +53,17 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 - Accessibility: <цвет и шкала> — <значение, норма>
 - Best Practices: <цвет и шкала> — <значение, норма>
 - SEO: <цвет и шкала> — <значение, норма>
-(Если Lighthouse / PageSpeed не запускался — явно указать «Не оценено» и причину.)
+### Desktop Lighthouse
+- LCP: <цвет и шкала █/░> — <значение, норма>
+- CLS: <цвет и шкала> — <значение, норма>
+- TBT: <цвет и шкала> — <значение, норма>
+- FCP: <цвет и шкала> — <значение, норма>
+- TTI: <цвет и шкала> — <значение, норма>
+- Performance score: <цвет и шкала> — <значение, норма>
+- Accessibility: <цвет и шкала> — <значение, норма>
+- Best Practices: <цвет и шкала> — <значение, норма>
+- SEO: <цвет и шкала> — <значение, норма>
+(Если какой-то из прогонов Mobile/Desktop Lighthouse не выполнен — явно указать «Не оценено», указать, какая именно конфигурация не запустилась (formFactor: mobile / desktop, configPreset: desktopConfig / fallbackDesktop / defaultMobile), и привести текст ошибки инструмента.)
 
 ## Анализ по категориям
 <Свободный диагностический текст по каждой ключевой области, объединяющий факты. Только наблюдения, без рекомендаций и плана действий.>
@@ -121,6 +132,7 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 | **Overall** | **/100** |  |  |
 
 ## Lighthouse / performance diagnostics
+### Mobile Lighthouse
 - LCP: <color and gauge █/░> — <value, benchmark>
 - CLS: <color and gauge> — <value, benchmark>
 - TBT: <color and gauge> — <value, benchmark>
@@ -130,7 +142,17 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 - Accessibility: <color and gauge> — <value, benchmark>
 - Best Practices: <color and gauge> — <value, benchmark>
 - SEO: <color and gauge> — <value, benchmark>
-(If Lighthouse / PageSpeed was not run — explicitly mark "Not assessed" and state the reason.)
+### Desktop Lighthouse
+- LCP: <color and gauge █/░> — <value, benchmark>
+- CLS: <color and gauge> — <value, benchmark>
+- TBT: <color and gauge> — <value, benchmark>
+- FCP: <color and gauge> — <value, benchmark>
+- TTI: <color and gauge> — <value, benchmark>
+- Performance score: <color and gauge> — <value, benchmark>
+- Accessibility: <color and gauge> — <value, benchmark>
+- Best Practices: <color and gauge> — <value, benchmark>
+- SEO: <color and gauge> — <value, benchmark>
+(If a Mobile or Desktop Lighthouse run did not complete, explicitly mark "Not assessed", state which configuration failed (formFactor: mobile / desktop, configPreset: desktopConfig / fallbackDesktop / defaultMobile), and quote the tool's actual error message — do not label it simply as "not assessed".)
 
 ## Category analysis
 <Free-form diagnostic narrative per key area, summarising facts. Observations only, no recommendations or action plan.>

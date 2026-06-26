@@ -48,7 +48,7 @@ const MAX_EXTRACT_STRUCTURED_DATA_CALLS = 3;
 const MAX_INSPECT_SOCIAL_PREVIEW_CALLS = 3;
 const MAX_INSPECT_HREFLANG_CALLS = 2;
 const MAX_RESOURCE_INVENTORY_CALLS = 2;
-const MAX_RUN_LIGHTHOUSE_CALLS = 1;
+const MAX_RUN_LIGHTHOUSE_CALLS = 2;
 const MAX_INSPECT_MOBILE_RENDERING_CALLS = 2;
 const MAX_INSPECT_ANALYTICS_TAGS_CALLS = 2;
 const MAX_CHECK_LINK_HEALTH_CALLS = 2;
@@ -1012,6 +1012,8 @@ function buildPreflightToolCalls(url: string): PreflightToolCall[] {
     { name: "dns_and_security_check", args: { url } },
     { name: "inspect_llms_txt", args: { url } },
     { name: "inspect_analytics_tags", args: { url } },
+    { name: "run_lighthouse", args: { url, formFactor: "mobile" } },
+    { name: "run_lighthouse", args: { url, formFactor: "desktop" } },
   ];
 }
 
@@ -1839,6 +1841,13 @@ export async function runAudit({
           phase: "preflight",
         });
         break;
+      }
+      if (call.name === "run_lighthouse") {
+        const formFactor = call.args.formFactor === "desktop" ? "desktop" : "mobile";
+        emit("status", {
+          message: `Running Lighthouse (formFactor: ${formFactor})...`,
+          phase: "preflight",
+        });
       }
       const entry = await runPreflightTool(call, browser, emit, toolErrors);
       appendEvidence(evidence.preflight, entry);

@@ -61,10 +61,14 @@ export function AuditForm() {
     }))
   );
 
-  // Restore the saved API key from localStorage once on mount.
+  // Restore saved settings from localStorage and reload models if an API key exists.
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    const { apiKey } = useAuditStore.getState();
+    if (apiKey.trim()) {
+      fetchModels();
+    }
+  }, [hydrate, fetchModels]);
 
   const groupedModels = useMemo(() => models[group], [models, group]);
 

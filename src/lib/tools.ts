@@ -133,7 +133,7 @@ export const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "run_lighthouse",
       description:
-        "Run a Lighthouse lab audit against a URL using a fresh headless Chrome instance (Playwright Chromium or system Chrome via chrome-launcher) and return compact evidence. Returns url/finalUrl/formFactor/fetchTime, category scores for performance/accessibility/best-practices/seo (0-1 or null), core Web Vitals metrics (first-contentful-paint, largest-contentful-paint, total-blocking-time, cumulative-layout-shift, speed-index, interactive with displayValue/score/numericValue when available), a sample of up to 8 opportunities (id, title, displayValue, score, numericValue), a sample of up to 8 diagnostics, and errors if the run could not be completed (e.g. Chrome not found, navigation failure, runtime error). NOTE: This tool is slow (typically 30-90s per run) and uses its own Chrome instance. Use it once per audit on the most important URL.",
+        "Run a Lighthouse lab audit against a URL using a fresh headless Chrome instance (Playwright Chromium or system Chrome via chrome-launcher) and return compact evidence. Returns url/finalUrl/formFactor/requestedFormFactor/configPreset/fetchTime, category scores for performance/accessibility/best-practices/seo (0-1 or null), core Web Vitals metrics (first-contentful-paint, largest-contentful-paint, total-blocking-time, cumulative-layout-shift, speed-index, interactive with displayValue/score/numericValue when available), a sample of up to 8 opportunities (id, title, displayValue, score, numericValue), a sample of up to 8 diagnostics, and errors if the run could not be completed (e.g. Chrome not found, navigation failure, runtime error). The `formFactor` parameter selects the Lighthouse preset: 'mobile' (default) or 'desktop' (uses lighthouseModule.desktopConfig when available, with an explicit desktop settings fallback so the run is still a real desktop audit). Mobile and desktop runs may be requested separately to compare. The deterministic preflight already includes both form factors. NOTE: This tool is slow (typically 30-90s per run) and uses its own Chrome instance.",
       parameters: {
         type: "object",
         properties: {
@@ -141,7 +141,7 @@ export const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           formFactor: {
             type: "string",
             enum: ["mobile", "desktop"],
-            description: "Optional Lighthouse form factor preset (default 'mobile').",
+            description: "Optional Lighthouse form factor preset (default 'mobile'). Use 'desktop' for a desktop-shaped audit.",
           },
         },
         required: ["url"],

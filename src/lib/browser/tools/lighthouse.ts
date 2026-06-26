@@ -55,6 +55,7 @@ export async function runLighthouse(
     return {
       url,
       formFactor,
+      requestedFormFactor: formFactor,
       error:
         "lighthouse_or_chrome_launcher_not_installed: install the `lighthouse` and `chrome-launcher` npm packages to enable run_lighthouse.",
       details: msg,
@@ -115,29 +116,88 @@ export async function runLighthouse(
 
     const lighthouseFn = lighthouseModule.default;
     const desktopConfig = lighthouseModule.desktopConfig;
-    const config = formFactor === "desktop" ? desktopConfig : undefined;
+    const hasDesktopConfig = Boolean(desktopConfig && typeof desktopConfig === "object");
+    log?.("debug", "Lighthouse desktopConfig availability", {
+      formFactor,
+      hasDesktopConfig,
+    });
+
+    let config: unknown = undefined;
+    let configPreset: "desktopConfig" | "fallbackDesktop" | "defaultMobile" = "defaultMobile";
+    if (formFactor === "desktop") {
+      if (hasDesktopConfig) {
+        config = desktopConfig;
+        configPreset = "desktopConfig";
+      } else {
+        // Fallback: build an explicit desktop preset if the package didn't
+        // expose one. This still produces a desktop-shaped Lighthouse run.
+        const presetModule = await import("lighthouse/core/config/desktop-config.js").catch(
+          () => null
+        );
+        const fallback = (presetModule as { default?: unknown } | null)?.default ?? presetModule;
+        if (fallback && typeof fallback === "object") {
+          config = fallback;
+          configPreset = "fallbackDesktop";
+        } else {
+          configPreset = "fallbackDesktop";
+        }
+      }
+    }
+
+    const desktopSettings =
+      formFactor === "desktop"
+        ? {
+            formFactor: "desktop" as const,
+            screenEmulation: {
+              mobile: false,
+              width: 1350,
+              height: 940,
+              deviceScaleFactor: 1,
+              disabled: false,
+            },
+            throttling: {
+              rttMs: 40,
+              throughputKbps: 10240,
+              cpuSlowdownMultiplier: 1,
+              requestLatencyMs: 0,
+              downloadThroughputKbps: 0,
+              uploadThroughputKbps: 0,
+            },
+            throttlingMethod: "simulate" as const,
+            emulatedUserAgent:
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+          }
+        : undefined;
+
+    const runnerSettings: Record<string, unknown> = {
+      port: chrome.port,
+      output: "json",
+      logLevel: "error",
+      formFactor,
+      onlyCategories: ["performance", "accessibility", "best-practices", "seo"],
+    };
+    if (desktopSettings) {
+      Object.assign(runnerSettings, desktopSettings);
+    }
 
     log?.("debug", "Invoking Lighthouse runner", {
       port: chrome.port,
       formFactor,
+      configPreset,
     });
 
     const runnerResult = await lighthouseFn(
       url,
-      {
-        port: chrome.port,
-        output: "json",
-        logLevel: "error",
-        formFactor,
-        onlyCategories: ["performance", "accessibility", "best-practices", "seo"],
-      },
-      config
+      runnerSettings,
+      config as Parameters<typeof lighthouseFn>[2]
     );
 
     if (!runnerResult) {
       return {
         url,
         formFactor,
+        requestedFormFactor: formFactor,
+        configPreset,
         error: "lighthouse_returned_no_result: Lighthouse runner did not return a result.",
       };
     }
@@ -147,6 +207,8 @@ export async function runLighthouse(
       return {
         url,
         formFactor,
+        requestedFormFactor: formFactor,
+        configPreset,
         error: "lighthouse_returned_no_lhr: Lighthouse result was empty.",
       };
     }
@@ -157,6 +219,8 @@ export async function runLighthouse(
         url,
         finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || undefined,
         formFactor,
+        requestedFormFactor: formFactor,
+        configPreset,
         fetchTime: lhr.fetchTime,
         runtimeError: {
           code: lhr.runtimeError.code,
@@ -226,6 +290,8 @@ export async function runLighthouse(
       url,
       finalUrl: lhr.finalDisplayedUrl || lhr.finalUrl || undefined,
       formFactor,
+      requestedFormFactor: formFactor,
+      configPreset,
       fetchTime: lhr.fetchTime,
       lighthouseVersion: lhr.lighthouseVersion,
       userAgent: lhr.userAgent,
@@ -238,6 +304,8 @@ export async function runLighthouse(
     log?.("debug", "Lighthouse run finished", {
       url: result.finalUrl,
       formFactor,
+      requestedFormFactor: formFactor,
+      configPreset,
       fetchTime: result.fetchTime,
       opportunities: opportunities.length,
       diagnostics: diagnostics.length,
@@ -249,6 +317,8 @@ export async function runLighthouse(
     return {
       url,
       formFactor,
+      requestedFormFactor: formFactor,
+      configPreset: formFactor === "desktop" ? "fallbackDesktop" : "defaultMobile",
       error: `lighthouse_run_failed: ${msg}`,
       hint:
         "If Chrome cannot be launched, install Playwright Chromium (`npx playwright install chromium`) or set CHROME_PATH to a system Chrome binary.",

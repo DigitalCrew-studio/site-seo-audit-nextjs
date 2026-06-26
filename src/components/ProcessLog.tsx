@@ -40,12 +40,12 @@ export function ProcessLog() {
   if (!running && logs.length === 0) return null;
 
   return (
-    <section className="border-y border-line py-2">
+    <section className="max-w-full overflow-hidden border-y border-line py-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 text-left"
+        className="flex w-full min-w-0 items-center gap-3 text-left"
       >
         <span className="eyebrow shrink-0 text-faint">
           process — {running ? "live" : "ended"}
@@ -93,69 +93,67 @@ export function ProcessLog() {
       </div>
 
       {/* Body */}
-      {open && <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-y-auto font-mono text-[13px] leading-relaxed">
+      {open && <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-x-auto overflow-y-auto font-mono text-[13px] leading-relaxed">
         {visibleLogs.map((log, idx) => (
-          <div key={idx} className="flex gap-3">
+          <div key={idx} className="flex min-w-0 gap-3">
             <span className="shrink-0 select-none text-faint">{log.time}</span>
-            {log.type === "status" && (
-              <span className="text-muted">{log.message}</span>
-            )}
-            {log.type === "tool" && (
-              <span>
-                <span className="text-faint">$</span>{" "}
-                <span className="text-positive">{log.name}</span>
-                <span className="text-muted">
-                  (
-                  {Object.entries(log.args)
-                    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-                    .join(", ")}
-                  )
-                </span>
-              </span>
-            )}
-            {log.type === "tool_end" && (
-              <span className="text-ink-soft">
-                <span className="text-faint">↳</span> {log.name}{" "}
-                <span
-                  className={
-                    log.ok ? "text-positive" : "text-accent"
-                  }
-                >
-                  {log.ok ? "ok" : "failed"}
-                </span>
-                <span className="text-muted">
-                  {" "}· {log.durationMs}ms · {log.bytes}B
-                </span>
-                {log.error && (
-                  <span className="text-accent"> — {log.error}</span>
-                )}
-              </span>
-            )}
-            {log.type === "debug" && (
-              <span className="text-ink-soft">
-                <span className="text-faint">·</span> {log.message}
-                {log.data && Object.keys(log.data).length > 0 && (
+            <span className="min-w-0 break-words">
+              {log.type === "status" && (
+                <span className="text-muted">{log.message}</span>
+              )}
+              {log.type === "tool" && (
+                <span>
+                  <span className="text-faint">$</span>{" "}
+                  <span className="text-positive">{log.name}</span>
                   <span className="text-muted">
-                    {" "}(
-                    {Object.entries(log.data)
-                      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-                      .join(", ")}
+                    (
+                    {formatArgs(log.args)}
                     )
                   </span>
-                )}
-              </span>
-            )}
-            {log.type === "tool_error" && (
-              <span className="text-accent">
-                <span className="text-faint">!</span> {log.name} failed —{" "}
-                {log.error}
-              </span>
-            )}
-            {log.type === "error" && (
-              <span className="text-red-700">
-                <span className="text-faint">✕</span> {log.message}
-              </span>
-            )}
+                </span>
+              )}
+              {log.type === "tool_end" && (
+                <span className="text-ink-soft">
+                  <span className="text-faint">↳</span> {log.name}{" "}
+                  <span
+                    className={
+                      log.ok ? "text-positive" : "text-accent"
+                    }
+                  >
+                    {log.ok ? "ok" : "failed"}
+                  </span>
+                  <span className="text-muted">
+                    {" "}· {log.durationMs}ms · {log.bytes}B
+                  </span>
+                  {log.error && (
+                    <span className="text-accent"> — {log.error}</span>
+                  )}
+                </span>
+              )}
+              {log.type === "debug" && (
+                <span className="text-ink-soft">
+                  <span className="text-faint">·</span> {log.message}
+                  {log.data && Object.keys(log.data).length > 0 && (
+                    <span className="text-muted">
+                      {" "}(
+                      {formatArgs(log.data)}
+                      )
+                    </span>
+                  )}
+                </span>
+              )}
+              {log.type === "tool_error" && (
+                <span className="text-accent">
+                  <span className="text-faint">!</span> {log.name} failed —{" "}
+                  {log.error}
+                </span>
+              )}
+              {log.type === "error" && (
+                <span className="text-red-700">
+                  <span className="text-faint">✕</span> {log.message}
+                </span>
+              )}
+            </span>
           </div>
         ))}
         {running && (
@@ -168,6 +166,14 @@ export function ProcessLog() {
       </div>}
     </section>
   );
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  const entries = Object.entries(args)
+    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    .join(", ");
+  if (entries.length <= 800) return entries;
+  return entries.slice(0, 800).trimEnd() + "…";
 }
 
 function formatLogSummary(log: ReturnType<typeof useAuditStore.getState>["logs"][number]): string {
