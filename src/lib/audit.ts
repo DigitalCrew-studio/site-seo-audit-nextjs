@@ -7,34 +7,65 @@ import { loadSkillText } from "@/lib/skill";
 import { BrowserSession, type BrowserLogFn } from "@/lib/playwright";
 import { getEndpoint } from "@/lib/opencode";
 import { TOOLS } from "@/lib/tools";
-import { buildSystemPrompt, buildUserPrompt } from "@/lib/prompts";
+import { buildSystemPrompt } from "@/lib/prompts";
 import type { Emitter } from "@/lib/sse";
 import type { AuditLanguage, OpenCodeGroup } from "@/lib/types";
 
-const MAX_ITERATIONS = 8;
-const MAX_DISCOVERY_ITERATIONS = 6;
 const MAX_TOKENS = 16000;
+const MAX_FINAL_TOKENS = 8000;
+const MAX_EMERGENCY_FINAL_TOKENS = 4000;
+const MAX_FINAL_CONTINUATIONS = 3;
+const FINAL_REPORT_END_MARKER = "END_OF_AUDIT_REPORT";
 const TOOL_TIMEOUT_MS = 25000;
 
-// OpenAI HTTP client timeout. Kept slightly above the per-step budget so the
-// client abort fires first and we can attach a clear, step-aware message.
-const OPENAI_TIMEOUT_MS = 120000;
+// Long local Docker runs should behave like a CLI: do not abort an active
+// stream just because it has been running for a while. These are idle/network
+// safeguards, not output-length caps.
+const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 1_800_000);
 
 // Budgets that keep the audit from running away. Values are intentionally
 // pragmatic (not a 1:1 token/byte map) — they just cap the worst cases.
-const PER_MODEL_WAIT_MS = 110000;        // hard cap on a single model call
-const MAX_AUDIT_DURATION_MS = 300000;   // total wall-clock cap for the loop
-const FINALIZE_AFTER_MS = 210000;       // switch from discovery to report writing
-const MIN_FINAL_REPORT_MS = 60000;      // keep enough time for the final report
+const PER_MODEL_WAIT_MS = Number(process.env.MODEL_IDLE_TIMEOUT_MS ?? 180_000);
+const PER_FINAL_MODEL_WAIT_MS = 110000;  // final reports are long; partials continue instead of being accepted
+const PER_EMERGENCY_FINAL_MODEL_WAIT_MS = 60000;
+const MAX_AUDIT_DURATION_MS = Number(process.env.AUDIT_MAX_DURATION_MS ?? 0);
+const FINALIZE_AFTER_MS = 150000;       // switch from discovery to report writing
+const MIN_FINAL_REPORT_MS = 100000;     // keep enough time for the final report
 const MAX_TOOL_RESULT_BYTES = 64_000;   // per-tool result cap before model ctx
-const MAX_HTML_TOOL_RESULT_BYTES = 24_000;
-const MAX_TEXT_TOOL_RESULT_BYTES = 16_000;
+const MAX_HTML_TOOL_RESULT_BYTES = 10_000;
+const MAX_TEXT_TOOL_RESULT_BYTES = 10_000;
 const MAX_CONTEXT_BYTES = 1_500_000;    // total message-array bytes cap
-const MAX_TOOL_CALLS = 32;
-const MAX_VISIT_PAGE_CALLS = 18;
-const MAX_HTML_TOOL_CALLS = 6;
+const MAX_TOOL_CALLS = 24;
+const MAX_VISIT_PAGE_CALLS = 1;
+const MAX_INSPECT_PAGE_CALLS = 6;
+const MAX_HTML_TOOL_CALLS = 2;
 const MAX_SCREENSHOT_CALLS = 3;
-const MAX_INTERNAL_LINK_CALLS = 6;
+const MAX_INTERNAL_LINK_CALLS = 1;
+const MAX_INSPECT_HTTP_CALLS = 4;
+const MAX_PARSE_SITEMAP_CALLS = 2;
+const MAX_EXTRACT_STRUCTURED_DATA_CALLS = 3;
+const MAX_INSPECT_SOCIAL_PREVIEW_CALLS = 3;
+const MAX_INSPECT_HREFLANG_CALLS = 2;
+const MAX_RESOURCE_INVENTORY_CALLS = 2;
+const MAX_RUN_LIGHTHOUSE_CALLS = 1;
+const MAX_INSPECT_MOBILE_RENDERING_CALLS = 2;
+const MAX_INSPECT_ANALYTICS_TAGS_CALLS = 2;
+const MAX_CHECK_LINK_HEALTH_CALLS = 2;
+const MAX_CRAWL_SITE_SAMPLE_CALLS = 1;
+const MAX_INSPECT_LLMS_TXT_CALLS = 1;
+const MAX_INSPECT_ENTITY_TRUST_CALLS = 2;
+const MAX_DNS_AND_SECURITY_CHECK_CALLS = 2;
+const MAX_ANALYZE_UPLOADED_AUDIT_REPORT_CALLS = 2;
+const MAX_ANALYZE_BACKLINK_EXPORT_CALLS = 2;
+const MAX_BATCH_CHECK_URLS_CALLS = 2;
+const MAX_REPORT_TEXT_CHARS = 200_000;
+const MIN_USABLE_FINAL_REPORT_CHARS = 500;
+
+// New pipeline caps: deterministic preflight runs all of the calls below, then
+// the model may request up to MAX_FOLLOWUP_TOOL_CALLS additional tools.
+const MAX_FOLLOWUP_TOOL_CALLS = 5;
+const EVIDENCE_RESULT_MAX_BYTES = 2000;
+const MAX_EVIDENCE_ERROR_CHARS = 200;
 
 // Throttling for streamed model output. Emit a status/debug event at most
 // once per window so the UI gets visible progress without log spam.
@@ -56,9 +87,16 @@ const SENSITIVE_QUERY_KEYS = new Set([
 const STATIC_ASSET_EXT_RE = /\.(png|jpe?g|webp|gif|svg|ico|pdf|zip|mp4|webm)(?:[?#].*)?$/i;
 const STATIC_SKIP_TOOLS = new Set([
   "visit_page",
+  "inspect_page_seo",
   "get_rendered_html",
   "get_rendered_text",
   "take_screenshot",
+  "extract_structured_data",
+  "inspect_social_preview",
+  "inspect_mobile_rendering",
+  "inspect_analytics_tags",
+  "crawl_site_sample",
+  "inspect_entity_trust",
 ]);
 const HTML_TOOLS = new Set(["fetch_raw_html", "get_rendered_html", "get_rendered_text"]);
 
@@ -79,12 +117,30 @@ type ToolError = { name: string; args: Record<string, unknown>; error: string };
 type ToolStats = {
   total: number;
   visit_page: number;
+  inspect_page_seo: number;
   fetch_raw_html: number;
   get_rendered_html: number;
   get_rendered_text: number;
   take_screenshot: number;
   list_internal_links: number;
   check_robots_and_sitemap: number;
+  inspect_http: number;
+  parse_sitemap: number;
+  extract_structured_data: number;
+  inspect_social_preview: number;
+  inspect_hreflang: number;
+  resource_inventory: number;
+  run_lighthouse: number;
+  inspect_mobile_rendering: number;
+  inspect_analytics_tags: number;
+  check_link_health: number;
+  crawl_site_sample: number;
+  inspect_llms_txt: number;
+  inspect_entity_trust: number;
+  dns_and_security_check: number;
+  analyze_uploaded_audit_report: number;
+  analyze_backlink_export: number;
+  batch_check_urls: number;
   denied: number;
   cacheHits: number;
   skippedStaticAssets: number;
@@ -94,12 +150,30 @@ function createToolStats(): ToolStats {
   return {
     total: 0,
     visit_page: 0,
+    inspect_page_seo: 0,
     fetch_raw_html: 0,
     get_rendered_html: 0,
     get_rendered_text: 0,
     take_screenshot: 0,
     list_internal_links: 0,
     check_robots_and_sitemap: 0,
+    inspect_http: 0,
+    parse_sitemap: 0,
+    extract_structured_data: 0,
+    inspect_social_preview: 0,
+    inspect_hreflang: 0,
+    resource_inventory: 0,
+    run_lighthouse: 0,
+    inspect_mobile_rendering: 0,
+    inspect_analytics_tags: 0,
+    check_link_health: 0,
+    crawl_site_sample: 0,
+    inspect_llms_txt: 0,
+    inspect_entity_trust: 0,
+    dns_and_security_check: 0,
+    analyze_uploaded_audit_report: 0,
+    analyze_backlink_export: 0,
+    batch_check_urls: 0,
     denied: 0,
     cacheHits: 0,
     skippedStaticAssets: 0,
@@ -120,6 +194,16 @@ function approxBytes(value: unknown): number {
 
 function isAborted(signal?: AbortSignal): boolean {
   return Boolean(signal?.aborted);
+}
+
+function auditHasTimeBudget(): boolean {
+  return Number.isFinite(MAX_AUDIT_DURATION_MS) && MAX_AUDIT_DURATION_MS > 0;
+}
+
+function remainingAuditMs(startedAt: number): number {
+  return auditHasTimeBudget()
+    ? MAX_AUDIT_DURATION_MS - (Date.now() - startedAt)
+    : Number.POSITIVE_INFINITY;
 }
 
 function safeTruncate(text: string, maxBytes: number): { text: string; truncated: boolean; originalBytes: number } {
@@ -176,9 +260,66 @@ function buildFinalReportMessage(language: AuditLanguage): ChatCompletionMessage
     role: "user",
     content:
       language === "ru"
-        ? "Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному шаблону отчёта из системного промпта. Если данных не хватает, явно укажи ограничение и не выдумывай факты."
-        : "Stop calling tools. Produce the FINAL SEO audit report now using only the evidence already collected. Follow the required report template from the system prompt. If evidence is incomplete, state the limitation clearly and do not invent facts.",
+        ? `Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному шаблону отчёта из системного промпта. Если данных не хватает, явно укажи ограничение и не выдумывай факты. Не выводи рассуждения, chain-of-thought, <think>, скрытые заметки или markdown code fence. Начни сразу с '# SEO Audit Report:'. В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}. Если не успеваешь закончить, не выводи этот маркер.`
+        : `Stop calling tools. Produce the FINAL SEO audit report now using only the evidence already collected. Follow the required report template from the system prompt. If evidence is incomplete, state the limitation clearly and do not invent facts. Do not output reasoning, chain-of-thought, <think>, hidden notes, or a markdown code fence. Start directly with '# SEO Audit Report:'. End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line. If you cannot finish, do not output this marker.`,
   };
+}
+
+function buildEmergencyFinalReportMessage(language: AuditLanguage): ChatCompletionMessageParam {
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? `Предыдущая попытка итогового отчёта не завершилась корректно. Немедленно верни компактный, но полноценный ИТОГОВЫЙ SEO-аудит по обязательным секциям. Не используй инструменты. Не выводи <think>, рассуждения, преамбулу или code fence. Начни с '# SEO Audit Report:'. Ограничься самыми важными проверенными находками и явно пометь непроверенное как 'Не оценено'. В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
+        : `The previous final-report attempt did not complete cleanly. Immediately return a compact but complete FINAL SEO audit using the required sections. Do not call tools. Do not output <think>, reasoning, preamble, or a code fence. Start with '# SEO Audit Report:'. Limit the report to the most important verified findings and mark unverified areas as 'Not assessed'. End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+  };
+}
+
+function buildContinueFinalReportMessage(language: AuditLanguage): ChatCompletionMessageParam {
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? `Продолжи итоговый SEO-аудит ровно с места, где он оборвался. Не повторяй уже написанные секции, заголовок отчёта или преамбулу. Не используй инструменты. Не выводи <think>, рассуждения или code fence. Когда полный отчёт будет закончен, выведи ${FINAL_REPORT_END_MARKER} отдельной последней строкой. Если снова не успеваешь закончить, не выводи этот маркер.`
+        : `Continue the final SEO audit exactly from where it stopped. Do not repeat already written sections, the report title, or any preamble. Do not call tools. Do not output <think>, reasoning, or a code fence. When the complete report is finished, output ${FINAL_REPORT_END_MARKER} on its own final line. If you still cannot finish, do not output this marker.`,
+  };
+}
+
+function sanitizeFinalReport(content: string): string {
+  let out = content
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .replace(/^[\s\S]*?<\/think>/i, "")
+    .trim();
+
+  const fence = out.match(/^```(?:md|markdown)?\s*\n([\s\S]*?)\n```\s*$/i);
+  if (fence?.[1]) out = fence[1].trim();
+  out = out.replace(/^markdown\s*\n/i, "").trim();
+  return out;
+}
+
+function hasFinalReportEndMarker(content: string): boolean {
+  return new RegExp(`(?:^|\\n)\\s*${FINAL_REPORT_END_MARKER}\\s*$`).test(content.trim());
+}
+
+function stripFinalReportEndMarker(content: string): string {
+  return content
+    .replace(new RegExp(`\\n?\\s*${FINAL_REPORT_END_MARKER}\\s*$`), "")
+    .trim();
+}
+
+function finalReportNeedsContinuation(content: string, finishReason: string | null): boolean {
+  return (
+    finishReason === "length" ||
+    finishReason === "timeout_partial" ||
+    finishReason === "timeout_unusable_partial" ||
+    !hasFinalReportEndMarker(content)
+  );
+}
+
+function isUsableFinalReport(content: string): boolean {
+  const sanitized = sanitizeFinalReport(content);
+  return sanitized.length >= MIN_USABLE_FINAL_REPORT_CHARS && /SEO Audit Report|SEO-аудит|Executive summary|Findings|Scorecard/i.test(sanitized);
 }
 
 function toolCacheKey(name: string, args: Record<string, unknown>): string {
@@ -202,6 +343,9 @@ function canRunTool(name: string, stats: ToolStats): { ok: boolean; reason?: str
   if (name === "visit_page" && stats.visit_page >= MAX_VISIT_PAGE_CALLS) {
     return { ok: false, reason: `visit_page budget exhausted (${stats.visit_page}/${MAX_VISIT_PAGE_CALLS})` };
   }
+  if (name === "inspect_page_seo" && stats.inspect_page_seo >= MAX_INSPECT_PAGE_CALLS) {
+    return { ok: false, reason: `inspect_page_seo budget exhausted (${stats.inspect_page_seo}/${MAX_INSPECT_PAGE_CALLS})` };
+  }
   if (HTML_TOOLS.has(name) && countHtmlToolCalls(stats) >= MAX_HTML_TOOL_CALLS) {
     return { ok: false, reason: `HTML/text tool budget exhausted (${countHtmlToolCalls(stats)}/${MAX_HTML_TOOL_CALLS})` };
   }
@@ -210,6 +354,57 @@ function canRunTool(name: string, stats: ToolStats): { ok: boolean; reason?: str
   }
   if (name === "list_internal_links" && stats.list_internal_links >= MAX_INTERNAL_LINK_CALLS) {
     return { ok: false, reason: `internal link budget exhausted (${stats.list_internal_links}/${MAX_INTERNAL_LINK_CALLS})` };
+  }
+  if (name === "inspect_http" && stats.inspect_http >= MAX_INSPECT_HTTP_CALLS) {
+    return { ok: false, reason: `inspect_http budget exhausted (${stats.inspect_http}/${MAX_INSPECT_HTTP_CALLS})` };
+  }
+  if (name === "parse_sitemap" && stats.parse_sitemap >= MAX_PARSE_SITEMAP_CALLS) {
+    return { ok: false, reason: `parse_sitemap budget exhausted (${stats.parse_sitemap}/${MAX_PARSE_SITEMAP_CALLS})` };
+  }
+  if (name === "extract_structured_data" && stats.extract_structured_data >= MAX_EXTRACT_STRUCTURED_DATA_CALLS) {
+    return { ok: false, reason: `extract_structured_data budget exhausted (${stats.extract_structured_data}/${MAX_EXTRACT_STRUCTURED_DATA_CALLS})` };
+  }
+  if (name === "inspect_social_preview" && stats.inspect_social_preview >= MAX_INSPECT_SOCIAL_PREVIEW_CALLS) {
+    return { ok: false, reason: `inspect_social_preview budget exhausted (${stats.inspect_social_preview}/${MAX_INSPECT_SOCIAL_PREVIEW_CALLS})` };
+  }
+  if (name === "inspect_hreflang" && stats.inspect_hreflang >= MAX_INSPECT_HREFLANG_CALLS) {
+    return { ok: false, reason: `inspect_hreflang budget exhausted (${stats.inspect_hreflang}/${MAX_INSPECT_HREFLANG_CALLS})` };
+  }
+  if (name === "resource_inventory" && stats.resource_inventory >= MAX_RESOURCE_INVENTORY_CALLS) {
+    return { ok: false, reason: `resource_inventory budget exhausted (${stats.resource_inventory}/${MAX_RESOURCE_INVENTORY_CALLS})` };
+  }
+  if (name === "run_lighthouse" && stats.run_lighthouse >= MAX_RUN_LIGHTHOUSE_CALLS) {
+    return { ok: false, reason: `run_lighthouse budget exhausted (${stats.run_lighthouse}/${MAX_RUN_LIGHTHOUSE_CALLS})` };
+  }
+  if (name === "inspect_mobile_rendering" && stats.inspect_mobile_rendering >= MAX_INSPECT_MOBILE_RENDERING_CALLS) {
+    return { ok: false, reason: `inspect_mobile_rendering budget exhausted (${stats.inspect_mobile_rendering}/${MAX_INSPECT_MOBILE_RENDERING_CALLS})` };
+  }
+  if (name === "inspect_analytics_tags" && stats.inspect_analytics_tags >= MAX_INSPECT_ANALYTICS_TAGS_CALLS) {
+    return { ok: false, reason: `inspect_analytics_tags budget exhausted (${stats.inspect_analytics_tags}/${MAX_INSPECT_ANALYTICS_TAGS_CALLS})` };
+  }
+  if (name === "check_link_health" && stats.check_link_health >= MAX_CHECK_LINK_HEALTH_CALLS) {
+    return { ok: false, reason: `check_link_health budget exhausted (${stats.check_link_health}/${MAX_CHECK_LINK_HEALTH_CALLS})` };
+  }
+  if (name === "crawl_site_sample" && stats.crawl_site_sample >= MAX_CRAWL_SITE_SAMPLE_CALLS) {
+    return { ok: false, reason: `crawl_site_sample budget exhausted (${stats.crawl_site_sample}/${MAX_CRAWL_SITE_SAMPLE_CALLS})` };
+  }
+  if (name === "inspect_llms_txt" && stats.inspect_llms_txt >= MAX_INSPECT_LLMS_TXT_CALLS) {
+    return { ok: false, reason: `inspect_llms_txt budget exhausted (${stats.inspect_llms_txt}/${MAX_INSPECT_LLMS_TXT_CALLS})` };
+  }
+  if (name === "inspect_entity_trust" && stats.inspect_entity_trust >= MAX_INSPECT_ENTITY_TRUST_CALLS) {
+    return { ok: false, reason: `inspect_entity_trust budget exhausted (${stats.inspect_entity_trust}/${MAX_INSPECT_ENTITY_TRUST_CALLS})` };
+  }
+  if (name === "dns_and_security_check" && stats.dns_and_security_check >= MAX_DNS_AND_SECURITY_CHECK_CALLS) {
+    return { ok: false, reason: `dns_and_security_check budget exhausted (${stats.dns_and_security_check}/${MAX_DNS_AND_SECURITY_CHECK_CALLS})` };
+  }
+  if (name === "analyze_uploaded_audit_report" && stats.analyze_uploaded_audit_report >= MAX_ANALYZE_UPLOADED_AUDIT_REPORT_CALLS) {
+    return { ok: false, reason: `analyze_uploaded_audit_report budget exhausted (${stats.analyze_uploaded_audit_report}/${MAX_ANALYZE_UPLOADED_AUDIT_REPORT_CALLS})` };
+  }
+  if (name === "analyze_backlink_export" && stats.analyze_backlink_export >= MAX_ANALYZE_BACKLINK_EXPORT_CALLS) {
+    return { ok: false, reason: `analyze_backlink_export budget exhausted (${stats.analyze_backlink_export}/${MAX_ANALYZE_BACKLINK_EXPORT_CALLS})` };
+  }
+  if (name === "batch_check_urls" && stats.batch_check_urls >= MAX_BATCH_CHECK_URLS_CALLS) {
+    return { ok: false, reason: `batch_check_urls budget exhausted (${stats.batch_check_urls}/${MAX_BATCH_CHECK_URLS_CALLS})` };
   }
   return { ok: true };
 }
@@ -221,38 +416,699 @@ function recordToolCall(name: string, stats: ToolStats): void {
   }
 }
 
-function shouldFinalize(params: {
-  iterations: number;
-  elapsedMs: number;
-  remainingMs: number;
-  stats: ToolStats;
-}): { yes: boolean; reason?: string } {
-  const { iterations, elapsedMs, remainingMs, stats } = params;
-  if (iterations >= MAX_DISCOVERY_ITERATIONS) {
-    return { yes: true, reason: `max discovery iterations reached (${iterations}/${MAX_DISCOVERY_ITERATIONS})` };
+type ReportIssue = {
+  title: string;
+  url?: string;
+  severity?: string;
+  status?: string;
+};
+
+function compactSample<T>(items: T[], limit: number): T[] {
+  return items.slice(0, limit);
+}
+
+function detectReportFormat(text: string): "json" | "csv" | "text" | "unknown" {
+  const trimmed = text.trim();
+  if (!trimmed) return "unknown";
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    return "json";
   }
-  if (elapsedMs >= FINALIZE_AFTER_MS) {
-    return { yes: true, reason: `finalize-after time reached (${elapsedMs}/${FINALIZE_AFTER_MS}ms)` };
+  const firstLines = trimmed.split(/\r?\n/).slice(0, 5);
+  if (firstLines.length >= 2 && firstLines[0].includes(",") && firstLines[1].includes(",")) {
+    return "csv";
   }
-  if (remainingMs <= MIN_FINAL_REPORT_MS) {
-    return { yes: true, reason: `only ${remainingMs}ms remaining for final report` };
+  return "text";
+}
+
+function normalizeScore(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value <= 1) return Math.round(value * 100);
+  if (value <= 100) return Math.round(value);
+  return undefined;
+}
+
+function analyzeUploadedAuditReport(reportText: string, sourceName?: string): unknown {
+  const inputBytes = utf8Bytes(reportText);
+  const warnings: string[] = [];
+  if (!reportText.trim()) {
+    return {
+      sourceName,
+      inputBytes,
+      detectedFormat: "unknown",
+      scores: {},
+      urls: { count: 0, sample: [] },
+      issues: { count: 0, sample: [] },
+      severityCounts: {},
+      toolHints: [],
+      warnings: ["emptyInput", "noIssuesDetected"],
+    };
   }
-  if (stats.total >= MAX_TOOL_CALLS) {
-    return { yes: true, reason: `total tool budget exhausted (${stats.total}/${MAX_TOOL_CALLS})` };
+
+  const truncatedInput = reportText.length > MAX_REPORT_TEXT_CHARS;
+  const text = reportText.slice(0, MAX_REPORT_TEXT_CHARS);
+  if (truncatedInput) warnings.push("truncatedInput");
+  const detectedFormat = detectReportFormat(text);
+  const lower = text.toLowerCase();
+  const toolHints = [
+    ["lighthouse", /lighthouse|largest-contentful-paint|cumulative-layout-shift|total-blocking-time/i],
+    ["search-console", /search console|googlebot|coverage|indexing|clicks|impressions/i],
+    ["screaming-frog", /screaming frog|inlinks|outlinks|indexability|crawl depth/i],
+    ["semrush", /semrush|site audit|toxic score|position tracking/i],
+    ["ahrefs", /ahrefs|domain rating|organic traffic|referring domains/i],
+    ["pagespeed", /pagespeed|page speed insights|field data|origin summary/i],
+  ].filter(([, re]) => (re as RegExp).test(text)).map(([name]) => name as string);
+
+  const urls = Array.from(new Set(text.match(/https?:\/\/[^\s"'<>),]+/gi) ?? [])).slice(0, 200);
+  const scores: Record<string, number> = {};
+  const namedScores: Record<string, number> = {};
+  const issues: ReportIssue[] = [];
+  const severityCounts: Record<string, number> = {};
+
+  const addSeverity = (severity?: string) => {
+    if (!severity) return;
+    const key = severity.toLowerCase();
+    severityCounts[key] = (severityCounts[key] ?? 0) + 1;
+  };
+  const addIssue = (issue: ReportIssue) => {
+    const title = issue.title.trim().replace(/\s+/g, " ");
+    if (!title || title.length < 4) return;
+    if (issues.some((existing) => existing.title === title && existing.url === issue.url)) return;
+    const severity = issue.severity?.slice(0, 40);
+    addSeverity(severity);
+    issues.push({
+      title: title.slice(0, 180),
+      url: issue.url,
+      severity,
+      status: issue.status?.slice(0, 40),
+    });
+  };
+
+  const assignScore = (name: string, value: unknown) => {
+    const score = normalizeScore(value);
+    if (score === undefined) return;
+    const key = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (!key) return;
+    if (["performance", "accessibility", "best_practices", "bestpractices", "seo"].includes(key)) {
+      scores[key === "bestpractices" ? "bestPractices" : key] = score;
+    } else if (Object.keys(namedScores).length < 12) {
+      namedScores[key] = score;
+    }
+  };
+
+  let parseError: string | undefined;
+  if (detectedFormat === "json") {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      const visit = (value: unknown, path = "", depth = 0) => {
+        if (depth > 5 || value == null) return;
+        if (Array.isArray(value)) {
+          for (const item of value.slice(0, 200)) visit(item, path, depth + 1);
+          return;
+        }
+        if (typeof value !== "object") return;
+        const obj = value as Record<string, unknown>;
+        for (const [key, val] of Object.entries(obj)) {
+          if (/score|performance|accessibility|best.?practices|seo/i.test(key)) assignScore(key, val);
+        }
+        const title = String(obj.title ?? obj.name ?? obj.issue ?? obj.audit ?? "");
+        const score = normalizeScore(obj.score);
+        const severity = typeof obj.severity === "string" ? obj.severity : typeof obj.level === "string" ? obj.level : undefined;
+        const status = typeof obj.status === "string" ? obj.status : undefined;
+        const url = typeof obj.url === "string" ? obj.url : typeof obj.href === "string" ? obj.href : undefined;
+        if (title && (severity || status || score === 0 || /error|warning|issue|fail|missing|invalid/i.test(title))) {
+          addIssue({ title, url, severity, status });
+        }
+        for (const [key, val] of Object.entries(obj)) visit(val, path ? `${path}.${key}` : key, depth + 1);
+      };
+      visit(parsed);
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+      warnings.push("parseError");
+    }
   }
-  if (stats.visit_page >= MAX_VISIT_PAGE_CALLS) {
-    return { yes: true, reason: `visit_page budget exhausted (${stats.visit_page}/${MAX_VISIT_PAGE_CALLS})` };
+
+  const scoreRe = /\b(performance|accessibility|best\s*practices|seo|health|score)\b[^\d]{0,24}(\d{1,3})(?:\s*\/\s*100|\s*%)?/gi;
+  for (const match of text.matchAll(scoreRe)) assignScore(match[1], Number(match[2]));
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const header = lines[0]?.toLowerCase().split(",").map((cell) => cell.trim().replace(/^"|"$/g, "")) ?? [];
+  if (detectedFormat === "csv" && header.length > 1) {
+    const issueIdx = header.findIndex((h) => /issue|problem|warning|error|title|name/.test(h));
+    const statusIdx = header.findIndex((h) => /status|code/.test(h));
+    const urlIdx = header.findIndex((h) => /^url$|address|link|page/.test(h));
+    const severityIdx = header.findIndex((h) => /severity|priority|level/.test(h));
+    for (const line of lines.slice(1, 301)) {
+      const cells = line.split(",").map((cell) => cell.trim().replace(/^"|"$/g, ""));
+      const title = issueIdx >= 0 ? cells[issueIdx] : "";
+      if (title) addIssue({ title, url: urlIdx >= 0 ? cells[urlIdx] : undefined, severity: severityIdx >= 0 ? cells[severityIdx] : undefined, status: statusIdx >= 0 ? cells[statusIdx] : undefined });
+    }
   }
-  if (countHtmlToolCalls(stats) >= MAX_HTML_TOOL_CALLS) {
-    return { yes: true, reason: `HTML/text tool budget exhausted (${countHtmlToolCalls(stats)}/${MAX_HTML_TOOL_CALLS})` };
+
+  for (const line of lines.slice(0, 500)) {
+    if (/\b(error|warning|issue|fail(?:ed)?|missing|invalid|critical|high|medium|low)\b/i.test(line)) {
+      const severity = line.match(/\b(critical|high|medium|low|error|warning)\b/i)?.[1];
+      const url = line.match(/https?:\/\/[^\s"'<>),]+/i)?.[0];
+      addIssue({ title: line, url, severity });
+    }
   }
-  if (stats.take_screenshot >= MAX_SCREENSHOT_CALLS) {
-    return { yes: true, reason: `screenshot budget exhausted (${stats.take_screenshot}/${MAX_SCREENSHOT_CALLS})` };
+
+  if (issues.length === 0) warnings.push("noIssuesDetected");
+
+  return {
+    sourceName,
+    inputBytes,
+    detectedFormat,
+    scores: {
+      ...scores,
+      namedSamples: namedScores,
+    },
+    urls: { count: urls.length, sample: compactSample(urls, 20) },
+    issues: { count: issues.length, sample: compactSample(issues, 30) },
+    severityCounts,
+    toolHints,
+    warnings,
+    ...(parseError ? { parseError: parseError.slice(0, 200) } : {}),
+    textSignals: {
+      mentionsIndexing: /indexing|indexed|noindex|canonical/i.test(lower),
+      mentionsCoreWebVitals: /core web vitals|lcp|cls|inp|fid|fcp/i.test(lower),
+      mentionsStructuredData: /structured data|schema\.org|json-ld|rich result/i.test(lower),
+    },
+  };
+}
+
+function parseLooseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
   }
-  if (stats.list_internal_links >= MAX_INTERNAL_LINK_CALLS) {
-    return { yes: true, reason: `internal link budget exhausted (${stats.list_internal_links}/${MAX_INTERNAL_LINK_CALLS})` };
+  cells.push(current.trim());
+  return cells.map((cell) => cell.replace(/^"|"$/g, ""));
+}
+
+function hostnameFromMaybeUrl(value: string): string | undefined {
+  try {
+    const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    return new URL(withProtocol).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return undefined;
   }
-  return { yes: false };
+}
+
+function analyzeBacklinkExport(exportText: string, sourceName?: string): unknown {
+  const inputBytes = utf8Bytes(exportText);
+  const warnings: string[] = [];
+  if (!exportText.trim()) {
+    return {
+      sourceName,
+      inputBytes,
+      detectedFormat: "unknown",
+      toolHints: [],
+      referringDomains: { count: 0, sample: [] },
+      targetUrls: { count: 0, sample: [] },
+      anchors: { count: 0, top: [] },
+      linkAttributes: {},
+      authoritySamples: [],
+      toxicSamples: [],
+      suspiciousPatterns: [],
+      warnings: ["emptyInput", "noBacklinksDetected"],
+    };
+  }
+
+  const truncatedInput = exportText.length > MAX_REPORT_TEXT_CHARS;
+  const text = exportText.slice(0, MAX_REPORT_TEXT_CHARS);
+  if (truncatedInput) warnings.push("truncatedInput");
+  const detectedFormat = detectReportFormat(text);
+  const toolHints = [
+    ["ahrefs", /ahrefs|domain rating|url rating|referring domains|traffic/i],
+    ["semrush", /semrush|authority score|toxicity|toxic score|backlink audit/i],
+    ["search-console", /search console|latest links|top linked pages|top linking sites/i],
+    ["majestic", /majestic|trust flow|citation flow/i],
+    ["moz", /moz|domain authority|page authority|spam score/i],
+  ].filter(([, re]) => (re as RegExp).test(text)).map(([name]) => name as string);
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const header = detectedFormat === "csv" ? parseLooseCsvLine(lines[0] ?? "").map((cell) => cell.toLowerCase()) : [];
+  const findColumn = (patterns: RegExp[]) => header.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+  const sourceIdx = findColumn([/source|referring.*(page|url)|backlink.*url|from/]);
+  const domainIdx = findColumn([/referring.*domain|source.*domain|domain/]);
+  const targetIdx = findColumn([/target|destination|linked.*page|to url|landing/]);
+  const anchorIdx = findColumn([/anchor/]);
+  const relIdx = findColumn([/rel|link type|attribute|nofollow|follow/]);
+  const statusIdx = findColumn([/status|lost|first seen|last seen/]);
+  const authorityIdx = findColumn([/domain rating|domain authority|authority score|trust flow|citation flow|dr|da|as/]);
+  const toxicIdx = findColumn([/toxic|toxicity|spam/]);
+
+  const referringDomains = new Set<string>();
+  const sourceUrls = new Set<string>();
+  const targetUrls = new Set<string>();
+  const anchorCounts = new Map<string, number>();
+  const linkAttributes: Record<string, number> = { follow: 0, nofollow: 0, sponsored: 0, ugc: 0, unknown: 0 };
+  const statusCounts: Record<string, number> = {};
+  const authoritySamples: Array<{ domain?: string; value: string }> = [];
+  const toxicSamples: Array<{ domain?: string; value: string }> = [];
+
+  const addAnchor = (anchor?: string) => {
+    const cleaned = anchor?.trim().replace(/\s+/g, " ").slice(0, 120);
+    if (!cleaned) return;
+    anchorCounts.set(cleaned, (anchorCounts.get(cleaned) ?? 0) + 1);
+  };
+  const addRel = (rel?: string) => {
+    const value = rel?.toLowerCase() ?? "";
+    if (value.includes("nofollow")) linkAttributes.nofollow += 1;
+    else if (value.includes("sponsored")) linkAttributes.sponsored += 1;
+    else if (value.includes("ugc")) linkAttributes.ugc += 1;
+    else if (value.includes("follow") || value === "dofollow") linkAttributes.follow += 1;
+    else linkAttributes.unknown += 1;
+  };
+  const addStatus = (status?: string) => {
+    const cleaned = status?.trim().toLowerCase();
+    if (!cleaned) return;
+    if (/lost|removed|deleted|not found/.test(cleaned)) statusCounts.lost = (statusCounts.lost ?? 0) + 1;
+    else if (/new|live|active|found/.test(cleaned)) statusCounts.live = (statusCounts.live ?? 0) + 1;
+    else statusCounts[cleaned.slice(0, 40)] = (statusCounts[cleaned.slice(0, 40)] ?? 0) + 1;
+  };
+
+  if (detectedFormat === "csv" && header.length > 1) {
+    for (const line of lines.slice(1, 1001)) {
+      const cells = parseLooseCsvLine(line);
+      const sourceUrl = sourceIdx >= 0 ? cells[sourceIdx] : undefined;
+      const sourceDomain = domainIdx >= 0 ? cells[domainIdx] : undefined;
+      const targetUrl = targetIdx >= 0 ? cells[targetIdx] : undefined;
+      const domain = sourceDomain || (sourceUrl ? hostnameFromMaybeUrl(sourceUrl) : undefined);
+      if (domain) referringDomains.add(domain.replace(/^www\./i, "").toLowerCase());
+      if (sourceUrl?.startsWith("http")) sourceUrls.add(sourceUrl);
+      if (targetUrl?.startsWith("http")) targetUrls.add(targetUrl);
+      addAnchor(anchorIdx >= 0 ? cells[anchorIdx] : undefined);
+      addRel(relIdx >= 0 ? cells[relIdx] : undefined);
+      addStatus(statusIdx >= 0 ? cells[statusIdx] : undefined);
+      if (authorityIdx >= 0 && cells[authorityIdx] && authoritySamples.length < 20) {
+        authoritySamples.push({ domain, value: cells[authorityIdx].slice(0, 40) });
+      }
+      if (toxicIdx >= 0 && cells[toxicIdx] && toxicSamples.length < 20) {
+        toxicSamples.push({ domain, value: cells[toxicIdx].slice(0, 40) });
+      }
+    }
+  } else {
+    for (const url of Array.from(new Set(text.match(/https?:\/\/[^\s"'<>),]+/gi) ?? [])).slice(0, 500)) {
+      sourceUrls.add(url);
+      const domain = hostnameFromMaybeUrl(url);
+      if (domain) referringDomains.add(domain);
+    }
+    for (const line of lines.slice(0, 500)) {
+      const anchorMatch = line.match(/anchor(?: text)?[:=]\s*["']?([^"'|,;]{2,120})/i);
+      addAnchor(anchorMatch?.[1]);
+      addRel(line);
+      addStatus(line);
+    }
+  }
+
+  const topAnchors = Array.from(anchorCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([anchor, count]) => ({ anchor, count }));
+  const suspiciousPatterns = [
+    ...(topAnchors.some((item) => /casino|viagra|loan|porn|betting|crypto/i.test(item.anchor)) ? ["spammyAnchorText"] : []),
+    ...(linkAttributes.nofollow + linkAttributes.sponsored + linkAttributes.ugc > linkAttributes.follow * 3 && linkAttributes.follow > 0 ? ["mostlyNonFollowAttributes"] : []),
+    ...(toxicSamples.some((item) => /high|toxic|spam|\b[7-9]\d\b|100/.test(item.value.toLowerCase())) ? ["toxicOrSpamScoresPresent"] : []),
+    ...(referringDomains.size > 0 && sourceUrls.size / referringDomains.size > 20 ? ["manyLinksPerDomain"] : []),
+  ];
+
+  if (referringDomains.size === 0 && sourceUrls.size === 0) warnings.push("noBacklinksDetected");
+  if (detectedFormat !== "csv") warnings.push("unstructuredInput");
+
+  return {
+    sourceName,
+    inputBytes,
+    detectedFormat,
+    toolHints,
+    referringDomains: { count: referringDomains.size, sample: compactSample(Array.from(referringDomains), 30) },
+    sourceUrls: { count: sourceUrls.size, sample: compactSample(Array.from(sourceUrls), 20) },
+    targetUrls: { count: targetUrls.size, sample: compactSample(Array.from(targetUrls), 20) },
+    anchors: { count: anchorCounts.size, top: topAnchors },
+    linkAttributes,
+    statusCounts,
+    authoritySamples,
+    toxicSamples,
+    suspiciousPatterns,
+    warnings,
+  };
+}
+
+async function checkOneUrlForBatch(url: string): Promise<{
+  url: string;
+  status?: number;
+  finalUrl?: string;
+  redirected: boolean;
+  contentType?: string;
+  error?: string;
+}> {
+  const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  const fetchOnce = async (method: "HEAD" | "GET") => {
+    const response = await fetch(normalized, {
+      method,
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "user-agent": "Mozilla/5.0 (compatible; OpenCodeSEOAudit/1.0)",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    response.body?.cancel().catch(() => undefined);
+    return response;
+  };
+
+  try {
+    let response = await fetchOnce("HEAD");
+    if ([405, 403, 501].includes(response.status)) response = await fetchOnce("GET");
+    return {
+      url: normalized,
+      status: response.status,
+      finalUrl: response.url,
+      redirected: response.url !== normalized,
+      contentType: response.headers.get("content-type")?.split(";")[0]?.slice(0, 80),
+    };
+  } catch (err) {
+    return {
+      url: normalized,
+      redirected: false,
+      error: err instanceof Error ? err.message.slice(0, 160) : String(err).slice(0, 160),
+    };
+  }
+}
+
+async function batchCheckUrls(rawUrls: unknown, maxUrls?: number): Promise<unknown> {
+  const requestedUrls = Array.isArray(rawUrls)
+    ? rawUrls.filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+    : [];
+  const uniqueUrls = Array.from(new Set(requestedUrls.map((url) => url.trim())));
+  const limit = Math.min(Math.max(Math.floor(maxUrls ?? 50), 1), 150);
+  const urls = uniqueUrls.slice(0, limit);
+  const warnings: string[] = [];
+  if (requestedUrls.length === 0) warnings.push("emptyInput");
+  if (uniqueUrls.length > urls.length) warnings.push("truncatedInput");
+
+  const results: Awaited<ReturnType<typeof checkOneUrlForBatch>>[] = [];
+  const concurrency = 8;
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, urls.length) }, async () => {
+    while (cursor < urls.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await checkOneUrlForBatch(urls[index]);
+    }
+  });
+  await Promise.all(workers);
+
+  const statusBuckets = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, errors: 0, other: 0 };
+  const contentTypes: Record<string, number> = {};
+  for (const result of results) {
+    if (result.error || !result.status) statusBuckets.errors += 1;
+    else if (result.status >= 200 && result.status < 300) statusBuckets["2xx"] += 1;
+    else if (result.status >= 300 && result.status < 400) statusBuckets["3xx"] += 1;
+    else if (result.status >= 400 && result.status < 500) statusBuckets["4xx"] += 1;
+    else if (result.status >= 500 && result.status < 600) statusBuckets["5xx"] += 1;
+    else statusBuckets.other += 1;
+    if (result.contentType) contentTypes[result.contentType] = (contentTypes[result.contentType] ?? 0) + 1;
+  }
+
+  const redirects = results.filter((result) => result.redirected);
+  const broken = results.filter((result) => result.error || (result.status !== undefined && result.status >= 400));
+  const finalUrlMismatches = redirects.filter((result) => {
+    if (!result.finalUrl) return false;
+    try {
+      const source = new URL(result.url);
+      const final = new URL(result.finalUrl);
+      return source.hostname.replace(/^www\./i, "") !== final.hostname.replace(/^www\./i, "") || source.pathname !== final.pathname;
+    } catch {
+      return false;
+    }
+  });
+  if (broken.length > 0) warnings.push("brokenOrErrorUrls");
+  if (redirects.length > 0) warnings.push("redirectsDetected");
+
+  return {
+    requestedCount: requestedUrls.length,
+    uniqueCount: uniqueUrls.length,
+    checkedCount: results.length,
+    truncated: uniqueUrls.length > urls.length,
+    statusBuckets,
+    redirects: { count: redirects.length, sample: compactSample(redirects, 25) },
+    broken: { count: broken.length, sample: compactSample(broken, 25) },
+    finalUrlMismatches: { count: finalUrlMismatches.length, sample: compactSample(finalUrlMismatches, 15) },
+    contentTypes: Object.entries(contentTypes).slice(0, 20).map(([contentType, count]) => ({ contentType, count })),
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic audit pipeline: evidence model + helpers.
+// ---------------------------------------------------------------------------
+
+type ToolEvidence = {
+  phase: "preflight" | "follow_up";
+  name: string;
+  args: Record<string, unknown>;
+  ok: boolean;
+  durationMs: number;
+  bytes: number;
+  result?: unknown;
+  error?: string;
+};
+
+type AuditEvidence = {
+  targetUrl: string;
+  preflight: ToolEvidence[];
+  followUp: ToolEvidence[];
+  errors: ToolError[];
+};
+
+function appendEvidence(list: ToolEvidence[], entry: ToolEvidence): ToolEvidence {
+  list.push(entry);
+  return entry;
+}
+
+function tryParseJson(text: string): unknown {
+  if (typeof text !== "string") return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractResultError(parsed: unknown): string | undefined {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const err = (parsed as Record<string, unknown>).error;
+  if (typeof err === "string") return err;
+  return undefined;
+}
+
+function buildEvidenceSummary(evidence: AuditEvidence): unknown {
+  const summarizeEntry = (entry: ToolEvidence) => {
+    const summary: Record<string, unknown> = {
+      phase: entry.phase,
+      name: entry.name,
+      args: redactArgs(entry.args),
+      ok: entry.ok,
+      durationMs: entry.durationMs,
+      bytes: entry.bytes,
+    };
+    if (entry.error) {
+      summary.error = entry.error.length > MAX_EVIDENCE_ERROR_CHARS
+        ? entry.error.slice(0, MAX_EVIDENCE_ERROR_CHARS) + "..."
+        : entry.error;
+    }
+    if (entry.result !== undefined) {
+      let json: string | undefined;
+      try {
+        json = JSON.stringify(entry.result);
+      } catch {
+        json = undefined;
+      }
+      if (json) {
+        if (utf8Bytes(json) <= EVIDENCE_RESULT_MAX_BYTES) {
+          summary.result = entry.result;
+        } else {
+          const { text, originalBytes } = safeTruncate(json, EVIDENCE_RESULT_MAX_BYTES);
+          summary.result = {
+            _truncated: true,
+            _originalBytes: originalBytes,
+            _preview: text,
+          };
+        }
+      }
+    }
+    return summary;
+  };
+
+  return {
+    targetUrl: evidence.targetUrl,
+    preflight: evidence.preflight.map(summarizeEntry),
+    followUp: evidence.followUp.map(summarizeEntry),
+    errorCount: evidence.errors.length,
+    errors: evidence.errors.map((e) => ({ name: e.name, error: e.error.length > MAX_EVIDENCE_ERROR_CHARS ? e.error.slice(0, MAX_EVIDENCE_ERROR_CHARS) + "..." : e.error })),
+  };
+}
+
+type PreflightToolCall = { name: string; args: Record<string, unknown> };
+
+function buildPreflightToolCalls(url: string): PreflightToolCall[] {
+  return [
+    { name: "inspect_http", args: { url } },
+    { name: "inspect_page_seo", args: { url } },
+    { name: "parse_sitemap", args: { url, maxUrls: 100, checkSample: false } },
+    { name: "crawl_site_sample", args: { url, maxPages: 10 } },
+    { name: "extract_structured_data", args: { url, checkImages: false } },
+    { name: "inspect_social_preview", args: { url, checkImages: false } },
+    { name: "inspect_mobile_rendering", args: { url, includeScreenshot: false } },
+    { name: "resource_inventory", args: { url } },
+    { name: "inspect_entity_trust", args: { url } },
+    { name: "dns_and_security_check", args: { url } },
+    { name: "inspect_llms_txt", args: { url } },
+    { name: "inspect_analytics_tags", args: { url } },
+  ];
+}
+
+function buildPlanningUserMessage(
+  url: string,
+  evidenceSummary: unknown,
+  language: AuditLanguage
+): ChatCompletionMessageParam {
+  const evidenceJson = JSON.stringify(evidenceSummary);
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? `Целевой URL: ${url}\n\nСначала были собраны автоматические предварительные доказательства (preflight). Вот их компактная сводка в формате JSON:\n\n${evidenceJson}\n\nТвоя задача сейчас — спланировать следующий шаг:\n1. Используй приведённую выше сводку доказательств.\n2. Если тебе нужны дополнительные данные, ты можешь вызвать не более ${MAX_FOLLOWUP_TOOL_CALLS} дополнительных инструментов. Выбирай только самые критичные пробелы в доказательствах.\n3. Если доказательств достаточно для итогового отчёта, ответь только текстом "READY_FOR_REPORT" и не вызывай инструменты.\n4. НЕ составляй итоговый отчёт на этом шаге. Сейчас нужны только план и/или вызовы инструментов.`
+        : `Target URL: ${url}\n\nAutomatic preflight evidence has been collected first. Here is a compact JSON summary:\n\n${evidenceJson}\n\nYour task now is to plan the next step:\n1. Use the evidence summary above.\n2. If you need additional data, you may call up to ${MAX_FOLLOWUP_TOOL_CALLS} additional tools. Choose only the most critical gaps in the evidence.\n3. If the evidence is sufficient for the final report, respond with only the text "READY_FOR_REPORT" and do not call tools.\n4. DO NOT draft the final report at this step. Only plan and/or tool calls are needed now.`,
+  };
+}
+
+function buildFinalEvidenceUserMessage(
+  url: string,
+  evidenceSummary: unknown,
+  language: AuditLanguage
+): ChatCompletionMessageParam {
+  const evidenceJson = JSON.stringify(evidenceSummary);
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? `Целевой URL: ${url}\n\nВот компактная сводка всех собранных доказательств (preflight + follow-up):\n\n${evidenceJson}\n\nСформируй ИТОГОВЫЙ SEO-аудит по обязательному шаблону из системного промпта, используя только эти доказательства. Не вызывай инструменты. Не выводи <think>, рассуждения, скрытые заметки или code fence. Начни сразу с "# SEO Audit Report:". Если данных не хватает, явно укажи ограничение и не выдумывай факты.`
+        : `Target URL: ${url}\n\nHere is a compact summary of all collected evidence (preflight + follow-up):\n\n${evidenceJson}\n\nProduce the FINAL SEO audit using the required template from the system prompt, based only on this evidence. Do not call tools. Do not output <think>, reasoning, hidden notes, or a code fence. Start directly with "# SEO Audit Report:". If data is insufficient, state the limitation clearly and do not invent facts.`,
+  };
+}
+
+/**
+ * Build the initial user message for the unrestricted agent loop. The model
+ * is told that it can call any tool as many times as it wants, and that when
+ * it has enough evidence it should respond with the final report (no tool
+ * calls, end marker on the last line).
+ */
+function buildAgentUserMessage(
+  url: string,
+  evidenceSummary: unknown,
+  language: AuditLanguage
+): ChatCompletionMessageParam {
+  const evidenceJson = JSON.stringify(evidenceSummary);
+  return {
+    role: "user",
+    content:
+      language === "ru"
+        ? `Целевой URL: ${url}\n\nНиже приведена компактная сводка автоматически собранных предварительных доказательств (preflight):\n\n${evidenceJson}\n\nТвоя задача:\n1. Используй приведённую выше сводку как отправную точку.\n2. Свободно вызывай любые из доступных TOOLS, чтобы собрать недостающие доказательства. Можно делать несколько вызовов подряд в одном шаге.\n3. Когда доказательств достаточно, верни ИТОГОВЫЙ SEO-аудит по обязательному шаблону из системного промпта обычным текстом (БЕЗ вызова TOOLS), начиная с "# SEO Audit Report:" и заканчивая ${FINAL_REPORT_END_MARKER} на отдельной последней строке.`
+        : `Target URL: ${url}\n\nBelow is a compact JSON summary of the automatically collected preflight evidence:\n\n${evidenceJson}\n\nYour task:\n1. Use the evidence summary above as the starting point.\n2. You may freely call any of the available TOOLS to gather missing evidence. You may make multiple tool calls in a single step.\n3. Once the evidence is sufficient, return the FINAL SEO audit following the required template from the system prompt as plain text (no TOOL calls), starting with "# SEO Audit Report:" and ending with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+  };
+}
+
+async function runPreflightTool(
+  call: PreflightToolCall,
+  browser: BrowserSession,
+  emit: Emitter,
+  toolErrors: ToolError[]
+): Promise<ToolEvidence> {
+  const startedAt = Date.now();
+  const content = await executeTool(call.name, call.args, browser, emit, toolErrors);
+  const durationMs = Date.now() - startedAt;
+  const bytes = utf8Bytes(content);
+  const parsed = tryParseJson(content);
+  const error = extractResultError(parsed);
+  const ok = !error;
+  return {
+    phase: "preflight",
+    name: call.name,
+    args: call.args,
+    ok,
+    durationMs,
+    bytes,
+    result: ok ? parsed : undefined,
+    error,
+  };
+}
+
+async function runFollowUpTool(
+  call: PreflightToolCall,
+  browser: BrowserSession,
+  emit: Emitter,
+  toolStats: ToolStats,
+  toolErrors: ToolError[]
+): Promise<ToolEvidence> {
+  const budget = canRunTool(call.name, toolStats);
+  if (!budget.ok) {
+    toolStats.denied += 1;
+    emit("status", {
+      message: `Denied ${call.name}: ${budget.reason}`,
+      phase: "tools",
+    });
+    emit("debug", {
+      message: "Tool call denied by budget",
+      data: { name: call.name, reason: budget.reason, toolStats },
+    });
+    return {
+      phase: "follow_up",
+      name: call.name,
+      args: call.args,
+      ok: false,
+      durationMs: 0,
+      bytes: 0,
+      error: `denied: ${budget.reason}`,
+    };
+  }
+  recordToolCall(call.name, toolStats);
+  emit("debug", {
+    message: "Tool budget",
+    data: { used: toolStats.total, max: MAX_TOOL_CALLS, toolStats },
+  });
+  const startedAt = Date.now();
+  const content = await executeTool(call.name, call.args, browser, emit, toolErrors);
+  const durationMs = Date.now() - startedAt;
+  const bytes = utf8Bytes(content);
+  const parsed = tryParseJson(content);
+  const error = extractResultError(parsed);
+  const ok = !error;
+  return {
+    phase: "follow_up",
+    name: call.name,
+    args: call.args,
+    ok,
+    durationMs,
+    bytes,
+    result: ok ? parsed : undefined,
+    error,
+  };
 }
 
 /**
@@ -277,6 +1133,30 @@ function shapeToolResult(
       reason: "screenshot omitted from model context; refer to debug log for size",
     };
     omittedScreenshot = true;
+  } else if (
+    name === "inspect_mobile_rendering" &&
+    result &&
+    typeof result === "object" &&
+    !Array.isArray(result)
+  ) {
+    const r = result as Record<string, unknown>;
+    const ss = r.screenshot;
+    if (ss && typeof ss === "object") {
+      const sso = ss as { base64?: unknown; mimeType?: unknown; bytes?: unknown };
+      const bytes =
+        typeof sso.bytes === "number"
+          ? sso.bytes
+          : typeof sso.base64 === "string"
+            ? Buffer.byteLength(sso.base64, "base64")
+            : 0;
+      r.screenshot = {
+        mimeType: typeof sso.mimeType === "string" ? sso.mimeType : "image/jpeg",
+        bytes,
+        omitted: true,
+        reason: "screenshot omitted from model context; refer to debug log for size",
+      };
+      omittedScreenshot = true;
+    }
   }
 
   const json = JSON.stringify(payload);
@@ -327,8 +1207,91 @@ async function executeTool(
           return await browser.takeScreenshot(args.url ? String(args.url) : undefined);
         case "list_internal_links":
           return await browser.internalLinks(String(args.url));
+        case "inspect_page_seo":
+          return await browser.inspectPageSeo(String(args.url));
         case "check_robots_and_sitemap":
           return await browser.fetchRobotsAndSitemap(String(args.url));
+        case "inspect_http":
+          return await browser.inspectHttp(
+            String(args.url),
+            typeof args.maxRedirects === "number" ? args.maxRedirects : undefined
+          );
+        case "parse_sitemap":
+          return await browser.parseSitemap(
+            String(args.url),
+            typeof args.maxUrls === "number" ? args.maxUrls : undefined,
+            typeof args.checkSample === "boolean" ? args.checkSample : undefined
+          );
+        case "extract_structured_data":
+          return await browser.extractStructuredData(
+            String(args.url),
+            typeof args.checkImages === "boolean" ? args.checkImages : undefined
+          );
+        case "inspect_social_preview":
+          return await browser.inspectSocialPreview(
+            String(args.url),
+            typeof args.checkImages === "boolean" ? args.checkImages : undefined
+          );
+        case "inspect_hreflang":
+          return await browser.inspectHreflang(
+            String(args.url),
+            typeof args.checkReciprocal === "boolean" ? args.checkReciprocal : undefined
+          );
+        case "resource_inventory":
+          return await browser.resourceInventory(
+            String(args.url),
+            typeof args.waitMs === "number" ? args.waitMs : undefined
+          );
+        case "run_lighthouse":
+          return await browser.runLighthouse(
+            String(args.url),
+            args.formFactor === "desktop" ? "desktop" : "mobile"
+          );
+        case "inspect_mobile_rendering":
+          return await browser.inspectMobileRendering(
+            String(args.url),
+            typeof args.width === "number" ? args.width : undefined,
+            typeof args.height === "number" ? args.height : undefined,
+            typeof args.includeScreenshot === "boolean"
+              ? args.includeScreenshot
+              : undefined
+          );
+        case "inspect_analytics_tags":
+          return await browser.inspectAnalyticsTags(String(args.url));
+        case "check_link_health":
+          return await browser.checkLinkHealth(
+            String(args.url),
+            typeof args.maxLinks === "number" ? args.maxLinks : undefined,
+            typeof args.includeExternal === "boolean"
+              ? args.includeExternal
+              : undefined
+          );
+        case "crawl_site_sample":
+          return await browser.crawlSiteSample(
+            String(args.url),
+            typeof args.maxPages === "number" ? args.maxPages : undefined
+          );
+        case "inspect_llms_txt":
+          return await browser.inspectLlmsTxt(String(args.url));
+        case "inspect_entity_trust":
+          return await browser.inspectEntityTrust(String(args.url));
+        case "dns_and_security_check":
+          return await browser.dnsAndSecurityCheck(String(args.url));
+        case "analyze_uploaded_audit_report":
+          return analyzeUploadedAuditReport(
+            String(args.reportText ?? ""),
+            typeof args.sourceName === "string" ? args.sourceName : undefined
+          );
+        case "analyze_backlink_export":
+          return analyzeBacklinkExport(
+            String(args.exportText ?? ""),
+            typeof args.sourceName === "string" ? args.sourceName : undefined
+          );
+        case "batch_check_urls":
+          return await batchCheckUrls(
+            args.urls,
+            typeof args.maxUrls === "number" ? args.maxUrls : undefined
+          );
         default:
           return { error: `Unknown tool: ${name}` };
       }
@@ -369,6 +1332,40 @@ async function executeTool(
         const toolUrl = args.url;
         const screenshotUrl =
           typeof toolUrl === "string" && toolUrl.length > 0 ? toolUrl : undefined;
+        emit("screenshot", {
+          id: randomUUID(),
+          url: screenshotUrl,
+          mimeType,
+          base64,
+          bytes,
+          takenAt: new Date().toISOString(),
+        });
+      }
+    } else if (
+      name === "inspect_mobile_rendering" &&
+      result &&
+      typeof result === "object" &&
+      !Array.isArray(result)
+    ) {
+      const r = result as {
+        screenshot?: { base64?: unknown; mimeType?: unknown; bytes?: unknown };
+        finalUrl?: unknown;
+      };
+      const ss = r.screenshot;
+      if (ss && typeof ss === "object" && typeof ss.base64 === "string" && ss.base64.length > 0) {
+        const base64 = ss.base64;
+        const mimeType = typeof ss.mimeType === "string" ? ss.mimeType : "image/jpeg";
+        const bytes =
+          typeof ss.bytes === "number"
+            ? ss.bytes
+            : Buffer.byteLength(base64, "base64");
+        const toolUrl = args.url;
+        const screenshotUrl =
+          typeof r.finalUrl === "string" && r.finalUrl.length > 0
+            ? r.finalUrl
+            : typeof toolUrl === "string" && toolUrl.length > 0
+              ? toolUrl
+              : undefined;
         emit("screenshot", {
           id: randomUUID(),
           url: screenshotUrl,
@@ -437,6 +1434,7 @@ async function runModelStep(
   mode: AuditMode,
   requestBytes: number,
   modelWaitMs: number,
+  maxTokens: number,
   signal: AbortSignal | undefined,
   emit: Emitter,
   setPhase: (p: string) => void
@@ -455,23 +1453,18 @@ async function runModelStep(
   });
   emit("debug", {
     message: mode === "final" ? "Final report request started" : `Model request started (step ${step})`,
-    data: { mode, model: modelId, messages: messages.length, requestBytes, maxTokens: MAX_TOKENS },
+    data: { mode, model: modelId, messages: messages.length, requestBytes, maxTokens },
   });
 
   const startedAt = Date.now();
   const timeoutError = () =>
     new Error(
-      `Model request timed out after ${modelWaitMs}ms at thinking step ${step}`
+      `Model stream was idle for ${modelWaitMs}ms at thinking step ${step}`
     );
-  const remainingWaitMs = () => modelWaitMs - (Date.now() - startedAt);
   const requestController = new AbortController();
   const abortRequest = () => requestController.abort();
   signal?.addEventListener("abort", abortRequest, { once: true });
-  const ensureBudget = () => {
-    if (remainingWaitMs() <= 0) throw timeoutError();
-  };
-  const withModelBudget = async <T,>(promise: Promise<T>): Promise<T> => {
-    ensureBudget();
+  const withModelIdleTimeout = async <T,>(promise: Promise<T>): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -480,7 +1473,7 @@ async function runModelStep(
           timer = setTimeout(() => {
             requestController.abort();
             reject(timeoutError());
-          }, remainingWaitMs());
+          }, modelWaitMs);
         }),
       ]);
     } finally {
@@ -492,12 +1485,12 @@ async function runModelStep(
     model: modelId,
     messages,
     ...(mode === "discovery" ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
-    temperature: 0.2,
-    max_tokens: MAX_TOKENS,
+    temperature: mode === "final" ? 0 : 0.2,
+    max_tokens: maxTokens,
     stream: true as const,
     stream_options: { include_usage: true },
   };
-  const stream: Stream<ChatCompletionChunk> = await withModelBudget(
+  const stream: Stream<ChatCompletionChunk> = await withModelIdleTimeout(
     openai.chat.completions.create(request, {
       signal: requestController.signal,
       timeout: OPENAI_TIMEOUT_MS,
@@ -530,14 +1523,6 @@ async function runModelStep(
   };
 
   const iterator = stream[Symbol.asyncIterator]();
-  // Per-step hard cap. Wraps the iterator so a slow / hung model does not
-  // stall the audit past the budget; we surface a step-aware error.
-  const perStepTimer = setTimeout(() => {
-    emit("debug", {
-      message: `Per-step wait timer fired`,
-      data: { step, waitMs: PER_MODEL_WAIT_MS },
-    });
-  }, PER_MODEL_WAIT_MS);
 
   try {
     while (true) {
@@ -545,7 +1530,7 @@ async function runModelStep(
         requestController.abort();
         throw new Error("aborted");
       }
-      const next = await withModelBudget(iterator.next());
+      const next = await withModelIdleTimeout(iterator.next());
       if (next.done) break;
       const chunk = next.value;
       chunkCount += 1;
@@ -589,11 +1574,26 @@ async function runModelStep(
         }
       }
 
-      ensureBudget();
       emitProgress(false);
     }
+  } catch (err) {
+    const sanitizedPartial = mode === "final" ? sanitizeFinalReport(content) : content;
+    if (content.trim().length > 0) {
+      const msg = err instanceof Error ? err.message : String(err);
+      finishReason = "timeout_partial";
+      content = sanitizedPartial;
+      emit("status", {
+        message: "Model stream went idle; returning the partial content generated so far for continuation.",
+        phase: mode === "final" ? "model:final report" : `model:streaming step ${step}`,
+      });
+      emit("debug", {
+        message: "Model stream idle partial fallback",
+        data: { step, contentBytes: content.length, reason: msg },
+      });
+    } else {
+      throw err;
+    }
   } finally {
-    clearTimeout(perStepTimer);
     signal?.removeEventListener("abort", abortRequest);
   }
 
@@ -601,15 +1601,34 @@ async function runModelStep(
     throw new Error(`Model returned no chunks at thinking step ${step}`);
   }
 
+  if (mode === "final") {
+    const sanitized = sanitizeFinalReport(content);
+    if (sanitized !== content.trim()) {
+      emit("debug", {
+        message: "Sanitized final report content",
+        data: { beforeBytes: content.length, afterBytes: sanitized.length },
+      });
+    }
+    content = sanitized;
+  }
+
   emitProgress(true);
   const durationMs = Date.now() - startedAt;
-  const ordered = Array.from(toolCalls.values())
+  let ordered = Array.from(toolCalls.values())
     .filter((tc) => tc.id && tc.function.name)
     .map((tc) => ({
       id: tc.id,
       type: "function" as const,
       function: { name: tc.function.name, arguments: tc.function.arguments || "{}" },
     }));
+
+  if (mode === "final" && ordered.length > 0) {
+    emit("debug", {
+      message: "Ignoring tool calls returned during final report mode",
+      data: { toolCalls: ordered.map((tc) => tc.function.name) },
+    });
+    ordered = [];
+  }
 
   emit("debug", {
     message: mode === "final" ? "Final report request finished" : `Model request finished (step ${step})`,
@@ -629,10 +1648,16 @@ async function runModelStep(
 }
 
 /**
- * Runs the full audit agent loop: load skill -> build prompts -> iteratively
- * call the model, executing any tool calls against the browser, until a final
- * report is produced or the iteration cap is reached. Progress is streamed via
- * the provided emitter. Owns the browser lifecycle.
+ * Runs the audit as a deterministic pipeline:
+ *   1. Run fixed preflight tools without LLM.
+ *   2. Build a compact evidence summary.
+ *   3. Ask the LLM once for optional follow-up tool calls (max 5).
+ *   4. Execute those follow-up tools.
+ *   5. Rebuild the evidence summary.
+ *   6. Generate the final standardized report without tools.
+ *
+ * The browser is started/stopped by this function. Progress is streamed via
+ * the provided emitter.
  */
 export async function runAudit({
   apiKey,
@@ -656,10 +1681,12 @@ export async function runAudit({
   const browser = new BrowserSession({ onLog: browserLog });
   const toolErrors: ToolError[] = [];
   const toolStats = createToolStats();
-  const toolCache = new Map<string, string>();
-  let iterations = 0;
-  let mode: AuditMode = "discovery";
-  let reportDone = false;
+  const evidence: AuditEvidence = {
+    targetUrl: url,
+    preflight: [],
+    followUp: [],
+    errors: toolErrors,
+  };
 
   const setPhase = (phase: string) => {
     try {
@@ -671,13 +1698,17 @@ export async function runAudit({
   setPhase("init");
 
   const auditStartedAt = Date.now();
-  const auditBudgetTimer = setTimeout(() => {
-    const elapsed = Date.now() - auditStartedAt;
-    emit("debug", {
-      message: `Audit duration budget timer fired`,
-      data: { elapsedMs: elapsed, maxMs: MAX_AUDIT_DURATION_MS },
-    });
-  }, MAX_AUDIT_DURATION_MS);
+  const auditBudgetTimer = auditHasTimeBudget()
+    ? setTimeout(() => {
+        const elapsed = Date.now() - auditStartedAt;
+        emit("debug", {
+          message: `Audit duration budget timer fired`,
+          data: { elapsedMs: elapsed, maxMs: MAX_AUDIT_DURATION_MS },
+        });
+      }, MAX_AUDIT_DURATION_MS)
+    : undefined;
+
+  let reportDone = false;
 
   try {
     if (isAborted(signal)) {
@@ -693,256 +1724,287 @@ export async function runAudit({
     setPhase("browser:start");
     await browser.start();
 
-    const messages: ChatCompletionMessageParam[] = [
-      buildSystemPrompt(skillText, language),
-      buildUserPrompt(url, language),
-    ];
-
     const openai = new OpenAI({
       apiKey,
       baseURL: getEndpoint(group),
       timeout: OPENAI_TIMEOUT_MS,
     });
 
-    let finalMessageAdded = false;
-    while (iterations < MAX_ITERATIONS) {
+    // ----- 1. Deterministic preflight tools -----
+    setPhase("preflight");
+    emit("status", { message: "Running preflight tools...", phase: "preflight" });
+    const preflightCalls = buildPreflightToolCalls(url);
+    emit("debug", {
+      message: "Preflight plan",
+      data: { count: preflightCalls.length, tools: preflightCalls.map((c) => c.name) },
+    });
+    for (const call of preflightCalls) {
       if (isAborted(signal)) {
         emit("error", { message: "Audit aborted by client" });
         return;
       }
-      const elapsedMs = Date.now() - auditStartedAt;
-      const remainingMs = MAX_AUDIT_DURATION_MS - elapsedMs;
-      if (remainingMs <= 0) {
+      const remainingMs = remainingAuditMs(auditStartedAt);
+      if (auditHasTimeBudget() && remainingMs <= MIN_FINAL_REPORT_MS) {
+        emit("status", {
+          message: `Skipping remaining preflight tools to leave time for the final report (${remainingMs}ms remaining).`,
+          phase: "preflight",
+        });
+        break;
+      }
+      const entry = await runPreflightTool(call, browser, emit, toolErrors);
+      appendEvidence(evidence.preflight, entry);
+      emit("debug", {
+        message: "Preflight tool done",
+        data: { name: entry.name, ok: entry.ok, durationMs: entry.durationMs, bytes: entry.bytes },
+      });
+    }
+    emit("status", {
+      message: `Preflight complete: ${evidence.preflight.length}/${preflightCalls.length} tool(s) finished.`,
+      phase: "preflight",
+    });
+
+    // ----- 2. Build the initial messages for the unrestricted agent loop -----
+    const initialEvidenceSummary = buildEvidenceSummary(evidence);
+    const messages: ChatCompletionMessageParam[] = [
+      buildSystemPrompt(skillText, language),
+      buildAgentUserMessage(url, initialEvidenceSummary, language),
+    ];
+    // Simple tool result cache, keyed by tool name + JSON-stringified args.
+    // Disabled arguments whose keys/ordering are unstable would not be a
+    // problem here: the model controls the args, so identical calls produce
+    // identical keys.
+    const toolResultCache = new Map<string, string>();
+
+    // ----- 3. Unrestricted agent loop -----
+    // The model is free to call any tool as many times as it wants, or to
+    // return the final report at any time. Per-tool budgets are NOT applied;
+    // we only skip calls that target static assets, cache duplicate results,
+    // and respect the overall time / context / iteration caps.
+    let agentStep = 0;
+    let emergencyTried = false;
+
+    while (true) {
+      if (isAborted(signal)) {
+        emit("error", { message: "Audit aborted by client" });
+        return;
+      }
+      agentStep += 1;
+      const remainingMs = remainingAuditMs(auditStartedAt);
+      if (auditHasTimeBudget() && remainingMs <= 0) {
         emit("error", {
-          message: `Audit stopped by time budget after ${iterations} step(s), ${toolStats.total} tool(s), ${elapsedMs}ms elapsed. No final report was produced.`,
+          message: "Audit stopped by time budget. No final report was produced.",
+        });
+        return;
+      }
+
+      // Context check / compaction gate: refuse to send another request when
+      // the message array already exceeds the cap. The model still has the
+      // existing messages, so we exit and try a final report below.
+      const requestBytes = approxBytes({ messages });
+      if (requestBytes > MAX_CONTEXT_BYTES) {
+        emit("debug", {
+          message: "Context budget exceeded; stopping agent loop",
+          data: { requestBytes, max: MAX_CONTEXT_BYTES, messages: messages.length },
+        });
+        break;
+      }
+
+      emit("debug", {
+        message: `Agent step ${agentStep} request prepared`,
+        data: { messages: messages.length, requestBytes, remainingMs },
+      });
+
+      const waitMs = auditHasTimeBudget()
+        ? Math.min(PER_MODEL_WAIT_MS, Math.max(1, remainingMs))
+        : PER_MODEL_WAIT_MS;
+
+      let result: {
+        content: string;
+        toolCalls: AccumulatedToolCall[];
+        finishReason: string | null;
+        chunkCount: number;
+        firstChunkMs: number;
+      };
+      try {
+        result = await runModelStep(
+          openai,
+          modelId,
+          messages,
+          agentStep,
+          "discovery",
+          requestBytes,
+          waitMs,
+          MAX_TOKENS,
+          signal,
+          emit,
+          setPhase
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        emit("error", {
+          message: `Agent step ${agentStep} failed: ${msg}`,
         });
         emit("debug", {
-          message: "Audit stopped without final report",
-          data: { iterations, elapsedMs, toolStats },
+          message: "runAudit caught agent step error",
+          data: { agentStep, error: msg, name: err instanceof Error ? err.name : undefined },
         });
         return;
       }
 
-      if (mode === "discovery") {
-        const decision = shouldFinalize({ iterations, elapsedMs, remainingMs, stats: toolStats });
-        if (decision.yes) {
-          mode = "final";
-          emit("status", {
-            message: `Switching to final report mode: ${decision.reason}`,
-            phase: "report",
-          });
-          emit("debug", {
-            message: "Tool budget state",
-            data: { reason: decision.reason, iterations, elapsedMs, remainingMs, toolStats },
-          });
-        }
-      }
-
-      if (mode === "final" && !finalMessageAdded) {
-        messages.push(buildFinalReportMessage(language));
-        finalMessageAdded = true;
-      }
-
-      iterations += 1;
-      setPhase(mode === "final" ? "model:final report" : `model:thinking step ${iterations}`);
-
-      const requestBytes = approxBytes({ messages, tools: mode === "discovery" ? TOOLS.length : 0 });
-      if (requestBytes > MAX_CONTEXT_BYTES) {
-        emit("error", {
-          message: `Aborting: model context would be ${requestBytes}B (max ${MAX_CONTEXT_BYTES}B)`,
-        });
-        return;
-      }
-      const remainingAuditMs = MAX_AUDIT_DURATION_MS - (Date.now() - auditStartedAt);
-      const modelWaitMs = Math.min(PER_MODEL_WAIT_MS, Math.max(1, remainingAuditMs));
-
-      const { content, toolCalls, finishReason } = await runModelStep(
-        openai,
-        modelId,
-        messages,
-        iterations,
-        mode,
-        requestBytes,
-        modelWaitMs,
-        signal,
-        emit,
-        setPhase
-      );
-
-      // No usable response: surface a step-aware error and stop.
-      if (!content && toolCalls.length === 0) {
-        const reason = finishReason ? ` (finish_reason=${finishReason})` : "";
-        emit("error", {
-          message: mode === "final"
-            ? `Empty final report response${reason}`
-            : `Empty model response at thinking step ${iterations}${reason}`,
-        });
-        break;
-      }
-
-      if (mode === "final") {
-        if (content) {
-          setPhase("report");
-          emit("status", { message: "Generating final report...", phase: "report" });
-          emit("done", { report: content });
-          reportDone = true;
-          break;
-        }
-        emit("error", {
-          message: "Final report mode produced no report content.",
-        });
-        break;
-      }
-
-      // The model wants to call one or more tools. Execute them sequentially
-      // because they share a single page instance.
-      if (toolCalls.length > 0) {
-        // Push the assistant message in the shape the API expects so the
-        // tool/tool message pairing is valid on the next iteration.
+      if (result.toolCalls.length > 0) {
+        // Append the assistant turn with its tool_calls, preserving any text
+        // the model emitted alongside the calls.
+        const assistantContent =
+          result.content && result.content.length > 0 ? result.content : null;
         messages.push({
           role: "assistant",
-          content: content || null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: "function" as const,
-            function: { name: tc.function.name, arguments: tc.function.arguments },
-          })),
+          content: assistantContent,
+          tool_calls: result.toolCalls,
         });
-        emit("status", {
-          message: `Executing ${toolCalls.length} tool call(s)...`,
-          phase: "tools",
-        });
-        setPhase("tools");
-        const toolResults: { role: "tool"; tool_call_id: string; content: string }[] = [];
-        for (const toolCall of toolCalls) {
+
+        // Execute every returned tool call sequentially. Per the spec we do
+        // NOT apply canRunTool / per-tool budgets; we only skip static-asset
+        // URLs and serve cached results when possible.
+        for (const toolCall of result.toolCalls) {
           if (isAborted(signal)) {
             emit("error", { message: "Audit aborted by client" });
             return;
           }
-          if (Date.now() - auditStartedAt > MAX_AUDIT_DURATION_MS) {
-            emit("error", {
-              message: `Audit aborted: exceeded total duration budget of ${MAX_AUDIT_DURATION_MS}ms`,
-            });
-            return;
-          }
-          let args: Record<string, unknown>;
+
+          let args: Record<string, unknown> = {};
           try {
             args = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
           } catch (parseErr) {
-            const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-            toolErrors.push({ name: toolCall.function.name, args: {}, error: `Invalid JSON args: ${msg}` });
-            toolResults.push({
-              role: "tool" as const,
+            const parseMsg =
+              parseErr instanceof Error ? parseErr.message : String(parseErr);
+            toolErrors.push({
+              name: toolCall.function.name,
+              args: {},
+              error: `Invalid JSON args: ${parseMsg}`,
+            });
+            emit("debug", {
+              message: "Tool call arguments were not valid JSON",
+              data: { name: toolCall.function.name, error: parseMsg },
+            });
+            messages.push({
+              role: "tool",
               tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: `Invalid JSON args: ${msg}` }),
+              content: JSON.stringify({ error: `Invalid JSON args: ${parseMsg}` }),
             });
             continue;
           }
+
+          let content: string;
 
           if (isStaticAssetToolCall(toolCall.function.name, args)) {
             toolStats.skippedStaticAssets += 1;
-            const skipped = JSON.stringify({
-              skipped: true,
-              reason: "Static asset URL skipped by audit policy",
-              url: typeof args.url === "string" ? args.url : undefined,
-            });
+            const skipMsg = `Skipped: ${toolCall.function.name} is not applicable to static asset URLs. Inspect the host page (inspect_http, resource_inventory, inspect_page_seo) instead of fetching the asset directly.`;
+            content = JSON.stringify({ error: skipMsg });
             emit("debug", {
-              message: "Tool skipped for static asset URL",
+              message: "Skipped tool call: static asset URL",
               data: { name: toolCall.function.name, args: redactArgs(args) },
             });
-            emit("tool_end", {
-              name: toolCall.function.name,
-              ok: true,
-              durationMs: 0,
-              bytes: approxBytes(skipped),
-            });
-            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: skipped });
-            continue;
+          } else {
+            const cacheKey = toolCacheKey(toolCall.function.name, args);
+            const cached = toolResultCache.get(cacheKey);
+            if (cached !== undefined) {
+              toolStats.cacheHits += 1;
+              content = cached;
+              emit("debug", {
+                message: "Tool cache hit",
+                data: { name: toolCall.function.name, cacheKey, bytes: cached.length },
+              });
+            } else {
+              content = await executeTool(
+                toolCall.function.name,
+                args,
+                browser,
+                emit,
+                toolErrors
+              );
+              toolResultCache.set(cacheKey, content);
+            }
+            recordToolCall(toolCall.function.name, toolStats);
           }
 
-          const cacheKey = toolCacheKey(toolCall.function.name, args);
-          const cached = toolCache.get(cacheKey);
-          if (cached) {
-            toolStats.cacheHits += 1;
-            emit("debug", {
-              message: "Tool cache hit",
-              data: { name: toolCall.function.name, args: redactArgs(args) },
-            });
-            emit("tool_end", {
-              name: toolCall.function.name,
-              ok: true,
-              durationMs: 0,
-              bytes: utf8Bytes(cached),
-            });
-            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: cached });
-            continue;
-          }
-
-          const budget = canRunTool(toolCall.function.name, toolStats);
-          if (!budget.ok) {
-            toolStats.denied += 1;
-            const denied = JSON.stringify({
-              error: `Tool call skipped: ${budget.reason}. Continue to final report using collected evidence.`,
-            });
-            emit("status", {
-              message: `Denied ${toolCall.function.name}: ${budget.reason}`,
-              phase: "tools",
-            });
-            emit("debug", {
-              message: "Tool call denied by budget",
-              data: { name: toolCall.function.name, reason: budget.reason, toolStats },
-            });
-            toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content: denied });
-            continue;
-          }
-
-          recordToolCall(toolCall.function.name, toolStats);
-          emit("debug", {
-            message: "Tool budget",
-            data: { used: toolStats.total, max: MAX_TOOL_CALLS, toolStats },
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content,
           });
-          const content = await executeTool(
-            toolCall.function.name,
-            args,
-            browser,
-            emit,
-            toolErrors
-          );
-          toolCache.set(cacheKey, content);
-          toolResults.push({ role: "tool" as const, tool_call_id: toolCall.id, content });
         }
-        messages.push(...toolResults);
 
-        // Re-check the context budget after appending tool results.
-        const afterBytes = approxBytes(messages);
-        if (afterBytes > MAX_CONTEXT_BYTES) {
-          emit("error", {
-            message: `Aborting: model context grew to ${afterBytes}B (max ${MAX_CONTEXT_BYTES}B)`,
-          });
-          return;
-        }
         continue;
       }
 
-      // The model produced the final report.
-      if (content) {
-        setPhase("report");
-        emit("status", { message: "Generating final report...", phase: "report" });
-        emit("done", { report: content });
-        reportDone = true;
+      // ----- Final-report branch -----
+      // No tool calls were returned, so the assistant's text content is the
+      // final report candidate. Apply the same marker/finish-reason rules
+      // used previously: incomplete -> ask for continuation; complete -> emit
+      // done; unusable -> try the compact emergency retry once.
+      const sanitized = sanitizeFinalReport(result.content);
+
+      if (finalReportNeedsContinuation(sanitized, result.finishReason)) {
+        const remainingAtCont = remainingAuditMs(auditStartedAt);
+        if (auditHasTimeBudget() && remainingAtCont <= 10_000) {
+          emit("debug", {
+            message: "Skipping final report continuation due to low time budget",
+            data: { remainingMs: remainingAtCont },
+          });
+          break;
+        }
+        emit("status", {
+          message: "Final report is incomplete; requesting continuation...",
+          phase: "model:final report",
+        });
+        emit("debug", {
+          message: "Final report needs continuation",
+          data: {
+            finishReason: result.finishReason,
+            hasEndMarker: hasFinalReportEndMarker(sanitized),
+            contentBytes: sanitized.length,
+            agentStep,
+          },
+        });
+        messages.push({ role: "assistant", content: sanitized });
+        messages.push(buildContinueFinalReportMessage(language));
+        continue;
+      }
+
+      const reportForDisplay = stripFinalReportEndMarker(sanitized);
+      if (!isUsableFinalReport(reportForDisplay)) {
+        if (!emergencyTried) {
+          const elapsedEmergency = Date.now() - auditStartedAt;
+          emergencyTried = true;
+          emit("status", {
+            message:
+              "Final report was not usable; retrying once with compact emergency instructions.",
+            phase: "report",
+          });
+          emit("debug", {
+            message: "Retrying final report after unusable output",
+            data: {
+              finishReason: result.finishReason,
+              contentBytes: sanitized.length,
+              elapsedMs: elapsedEmergency,
+              retryWaitMs: PER_EMERGENCY_FINAL_MODEL_WAIT_MS,
+              retryMaxTokens: MAX_EMERGENCY_FINAL_TOKENS,
+            },
+          });
+          messages.push(buildEmergencyFinalReportMessage(language));
+          continue;
+        }
+        emit("error", {
+          message: "Final report mode produced no usable report content.",
+        });
         break;
       }
 
-      emit("error", {
-        message: `Empty model response at thinking step ${iterations}`,
-      });
+      setPhase("report");
+      emit("status", { message: "Generating final report...", phase: "report" });
+      emit("done", { report: reportForDisplay });
+      reportDone = true;
       break;
-    }
-
-    if (!reportDone && iterations >= MAX_ITERATIONS) {
-      emit("error", {
-        message: "Stopped after maximum number of tool-call rounds.",
-      });
     }
 
     if (toolErrors.length > 0) {
@@ -954,11 +2016,9 @@ export async function runAudit({
     const raw = err instanceof Error ? err.message : String(err);
     // Make timeout / abort errors from the OpenAI client specific to the step.
     const lower = raw.toLowerCase();
-    const stepMatch = raw.match(/at thinking step (\d+)/i);
-    const stepSuffix = stepMatch ? ` ${stepMatch[1]}` : "";
     if (lower.includes("aborted")) {
       emit("error", {
-        message: `Audit aborted at thinking step${stepSuffix} (client disconnect)`,
+        message: "Audit aborted (client disconnect)",
       });
     } else if (
       lower.includes("timeout") ||
@@ -969,15 +2029,13 @@ export async function runAudit({
       emit("error", {
         message: raw.includes("Model request timed out")
           ? raw
-          : `Model request timed out after ${PER_MODEL_WAIT_MS}ms at thinking step${stepSuffix}`,
+          : `Model request timed out after ${PER_MODEL_WAIT_MS}ms`,
       });
       emit("debug", {
         message: "Audit timeout stats",
         data: {
-          iterations,
           elapsedMs: Date.now() - auditStartedAt,
           toolStats,
-          mode,
           reportDone,
         },
       });
@@ -989,7 +2047,7 @@ export async function runAudit({
       data: { message: raw, name: err instanceof Error ? err.name : undefined },
     });
   } finally {
-    clearTimeout(auditBudgetTimer);
+    if (auditBudgetTimer) clearTimeout(auditBudgetTimer);
     await browser.close();
   }
 }

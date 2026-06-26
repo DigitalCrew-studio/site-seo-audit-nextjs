@@ -31,6 +31,10 @@ ${langInstruction(language)}
 
 You have access to browser tools. Only claim a finding if you have evidence from a tool result. If a check could not be performed, state the limitation clearly.
 
+Use compact aggregate tools first. Prefer inspect_page_seo, crawl_site_sample, parse_sitemap, inspect_http, structured/social/hreflang/entity/security/performance tools over raw HTML or one-off primitive checks. Do not over-explore URL variants manually after crawl/sitemap evidence is available. Leave enough time for the final report; once core evidence is gathered, stop calling tools and write the report.
+
+Never output hidden reasoning, chain-of-thought, scratchpad text, <think> tags, or markdown code fences around the final report. The user-facing final answer must start directly with the report content.
+
 When you produce the FINAL report, you MUST follow the standardized report template exactly — see the report format rules below. Every audit must return the same structure, filled with your evidence-based content.
 
 ${reportInstructions(language)}
