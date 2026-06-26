@@ -7,8 +7,7 @@ import { ReportCard } from "@/components/ReportCard";
 import { ReportDialog } from "@/components/ReportDialog";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { PageHeader } from "@/components/ui";
-
-const SITE_URL = "https://seofrendly.ru";
+import { SITE_URL } from "@/lib/site";
 
 // /audit is indexable: it carries a static Russian description of what the
 // audit does and is the main public tool page. History and API key are

@@ -7,6 +7,12 @@ const NAV_LINKS = [
   { href: "/settings", label: "Настройки" },
 ] as const;
 
+const INFO_LINKS = [
+  { href: "/about", label: "О сервисе" },
+  { href: "/contacts", label: "Контакты" },
+  { href: "/privacy", label: "Политика конфиденциальности" },
+] as const;
+
 const TECH_LINKS = [
   { href: "/robots.txt", label: "robots.txt" },
   { href: "/sitemap.xml", label: "sitemap.xml" },
@@ -17,7 +23,7 @@ export function Footer() {
   return (
     <footer className="border-t border-line bg-surface/70">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-        <div className="grid gap-8 md:grid-cols-[1.35fr_0.8fr_0.8fr]">
+        <div className="grid gap-8 md:grid-cols-[1.35fr_0.8fr_0.8fr_0.8fr]">
           <div className="max-w-md">
             <Link
               href="/"
@@ -39,6 +45,21 @@ export function Footer() {
             <p className="eyebrow text-faint">навигация</p>
             <nav className="mt-3 flex flex-col items-start gap-2">
               {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm font-medium text-muted transition hover:text-ink"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          <div>
+            <p className="eyebrow text-faint">информация</p>
+            <nav className="mt-3 flex flex-col items-start gap-2">
+              {INFO_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}

@@ -4,6 +4,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Script from "next/script";
 import { AppBar } from "@/components/AppBar";
 import { Footer } from "@/components/Footer";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -20,7 +21,6 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
   "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
@@ -56,9 +56,9 @@ export const metadata: Metadata = {
   creator: SITE_NAME,
   publisher: SITE_NAME,
   alternates: {
-    canonical: "/",
+    canonical: `${SITE_URL}/`,
     languages: {
-      "ru-RU": "/",
+      "ru-RU": `${SITE_URL}/`,
     },
   },
   openGraph: {

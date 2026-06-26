@@ -18,6 +18,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "Настройки", match: (p) => Boolean(p?.startsWith("/settings")) },
 ];
 
+// Только в мобильном меню: информационные разделы. В десктопной шапке
+// оставляем 3 основных ссылки, чтобы не перегружать верхнюю навигацию.
+const MOBILE_INFO_ITEMS: { href: string; label: string }[] = [
+  { href: "/about", label: "О сервисе" },
+  { href: "/contacts", label: "Контакты" },
+  { href: "/privacy", label: "Политика конфиденциальности" },
+];
+
 export function AppBar() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -90,7 +98,7 @@ export function AppBar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`group/link relative py-2 text-[14px] font-medium transition-colors ${active
+                className={`group/link relative inline-flex min-h-[48px] items-center py-3 text-[14px] font-medium transition-colors ${active
                   ? "text-ink"
                   : "text-muted hover:text-ink"
                   }`}
@@ -112,7 +120,7 @@ export function AppBar() {
           aria-expanded={menuOpen}
           aria-controls="mobile-navigation"
           aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-paper/75 text-ink-soft transition hover:border-line-strong hover:text-ink sm:hidden"
+          className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-paper/75 text-ink-soft transition hover:border-line-strong hover:text-ink sm:hidden"
         >
           {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -133,7 +141,7 @@ export function AppBar() {
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
                   aria-current={active ? "page" : undefined}
-                  className={`group/mobile relative rounded-xl px-3 py-2.5 text-[15px] font-medium transition ${active
+                  className={`group/mobile relative flex min-h-[48px] items-center rounded-xl px-3 py-3 text-[15px] font-medium transition ${active
                     ? "bg-ink text-paper"
                     : "text-muted hover:bg-paper hover:text-ink"
                     }`}
@@ -145,6 +153,21 @@ export function AppBar() {
                 </Link>
               );
             })}
+            <div
+              aria-hidden="true"
+              className="my-2 h-px w-full bg-line"
+            />
+            <p className="eyebrow px-3 pb-1 text-faint">информация</p>
+            {MOBILE_INFO_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMenuOpen(false)}
+                className="flex min-h-[48px] items-center rounded-xl px-3 py-3 text-[15px] font-medium text-muted transition hover:bg-paper hover:text-ink"
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
         </div>
       )}

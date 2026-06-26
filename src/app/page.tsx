@@ -19,11 +19,15 @@ import {
   type Capability,
 } from "@/lib/capabilities";
 import { CapabilityBentoCard } from "@/components/CapabilityBentoCard";
+import { SITE_URL, BRAND_EMAIL } from "@/lib/site";
 
-const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
   "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, редиректов, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
+// Профили бренда в соцсетях и на внешних площадках. Попадают в Organization.sameAs
+// (schema.org) и в footer. Заполняется по мере появления каналов; пустой массив
+// означает «пока нигде» — поле sameAs не рендерится, чтобы не светить пустоту.
+const SOCIAL_URLS: readonly string[] = [];
 
 export const metadata: Metadata = {
   title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
@@ -183,11 +187,22 @@ function buildStructuredData() {
         "@type": "Organization",
         "@id": `${SITE_URL}/#organization`,
         name: SITE_NAME,
+        alternateName: "Seofriendly",
         url: `${SITE_URL}/`,
+        description: SITE_DESCRIPTION,
         logo: {
           "@type": "ImageObject",
           url: `${SITE_URL}/icon`,
         },
+        email: BRAND_EMAIL,
+        contactPoint: {
+          "@type": "ContactPoint",
+          contactType: "customer support",
+          email: BRAND_EMAIL,
+          url: `${SITE_URL}/contacts`,
+          availableLanguage: ["Russian"],
+        },
+        ...(SOCIAL_URLS.length > 0 ? { sameAs: SOCIAL_URLS } : {}),
       },
       {
         "@type": "WebApplication",

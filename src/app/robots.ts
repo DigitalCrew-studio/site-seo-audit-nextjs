@@ -1,7 +1,17 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
-const SITE_URL = "https://seofrendly.ru";
 const DISALLOW = ["/api/"];
+// Берем хост из SITE_URL, чтобы robots.ts не зависел от захардкоженного
+// домена. Если SITE_URL невалиден (например, в тестах забыли env), host
+// останется пустым — это валидный robots.txt.
+const SITE_HOST = (() => {
+  try {
+    return new URL(SITE_URL).host;
+  } catch {
+    return "";
+  }
+})();
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -30,6 +40,6 @@ export default function robots(): MetadataRoute.Robots {
       { userAgent: "Google-Extended", allow: "/", disallow: DISALLOW },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
-    host: "seofrendly.ru",
+    ...(SITE_HOST ? { host: SITE_HOST } : {}),
   };
 }

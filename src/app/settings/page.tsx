@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/SettingsForm";
 import { Badge, PageHeader, Panel } from "@/components/ui";
+import { SITE_URL } from "@/lib/site";
 
-const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
 
 // /settings is private: it stores the user's API key, model, language and

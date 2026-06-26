@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
-
-const SITE_URL = "https://seofrendly.ru";
+import { SITE_URL } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -24,6 +23,39 @@ export default function sitemap(): MetadataRoute.Sitemap {
       alternates: {
         languages: {
           "ru-RU": `${SITE_URL}/audit`,
+        },
+      },
+    },
+    {
+      url: `${SITE_URL}/about`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.5,
+      alternates: {
+        languages: {
+          "ru-RU": `${SITE_URL}/about`,
+        },
+      },
+    },
+    {
+      url: `${SITE_URL}/contacts`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.5,
+      alternates: {
+        languages: {
+          "ru-RU": `${SITE_URL}/contacts`,
+        },
+      },
+    },
+    {
+      url: `${SITE_URL}/privacy`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
+      alternates: {
+        languages: {
+          "ru-RU": `${SITE_URL}/privacy`,
         },
       },
     },

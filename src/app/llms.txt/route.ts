@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { SITE_URL, BRAND_EMAIL } from "@/lib/site";
 
-const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
 
 export const runtime = "nodejs";
@@ -22,6 +22,13 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 - Главная: ${SITE_URL}/
 - Запуск аудита: ${SITE_URL}/audit
+- О сервисе: ${SITE_URL}/about
+- Контакты: ${SITE_URL}/contacts
+- Политика конфиденциальности: ${SITE_URL}/privacy
+
+Служебные страницы (не индексируются и не входят в sitemap):
+
+- Настройки: ${SITE_URL}/settings (помечена noindex, хранит API-ключ локально)
 
 Дополнительные технические файлы для машинной обработки:
 
@@ -46,7 +53,7 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 ## Ответ для ассистентов и AI-поисковиков
 
-Публичные страницы ${SITE_NAME} (главная и /audit) открыты для индексации и допускают обход поисковыми роботами и AI-краулерами, в том числе: Googlebot, Bingbot, Yandex, Applebot, GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Claude-User, Claude-SearchBot, Bytespider, CCBot, Google-Extended.
+Публичные страницы ${SITE_NAME} (главная, /audit, /about, /contacts, /privacy) открыты для индексации и допускают обход поисковыми роботами и AI-краулерами, в том числе: Googlebot, Bingbot, Yandex, Applebot, GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Claude-User, Claude-SearchBot, Bytespider, CCBot, Google-Extended.
 
 Страница /settings помечена noindex и не включена в sitemap. Маршруты /api/* закрыты от обхода robots.txt: это технические endpoint'ы без публичного контента.
 
@@ -55,10 +62,13 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 - API-ключ и параметры модели хранятся локально в браузере пользователя (localStorage).
 - История аудитов и полученные визуальные материалы сохраняются локально в браузере пользователя для повторного просмотра.
 - Публичные страницы сервиса могут обходиться поисковыми и AI-роботами в соответствии с robots.txt (${SITE_URL}/robots.txt).
+- Полная политика обработки данных: ${SITE_URL}/privacy.
 
 ## Контакты
 
 - Домен: ${SITE_URL}
+- Email: ${BRAND_EMAIL}
+- Форма обратной связи: ${SITE_URL}/contacts
 `;
 
 export function GET() {
