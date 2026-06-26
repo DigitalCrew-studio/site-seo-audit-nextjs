@@ -50,9 +50,11 @@
   width: 100%;
   border: 1px solid var(--color-line);
   background-color: var(--color-surface);
-  border-radius: 8px;
-  padding: 0.625rem 0.75rem;
+  border-radius: 10px;
+  min-height: 2.875rem;
+  padding: 0.75rem 0.875rem;
   font-size: 0.875rem;
+  line-height: 1.25rem;
   color: var(--color-ink);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }

@@ -48,14 +48,21 @@ function formatProfileLabel(image: ReportImageEntry): string | null {
     }
     return image.profile;
   }
-  if (image.viewport && Number.isFinite(image.viewport.width) && Number.isFinite(image.viewport.height)) {
+  if (
+    image.viewport &&
+    Number.isFinite(image.viewport.width) &&
+    Number.isFinite(image.viewport.height)
+  ) {
     return `${image.viewport.width}×${image.viewport.height}`;
   }
   return null;
 }
 
 function useImageSrc(image: ReportImageEntry): string | null {
-  const [resolved, setResolved] = useState<{ imageId: string; url: string } | null>(null);
+  const [resolved, setResolved] = useState<{
+    imageId: string;
+    url: string;
+  } | null>(null);
 
   useEffect(() => {
     if (image.storage !== "indexeddb" || !image.imageId) {
@@ -79,7 +86,8 @@ function useImageSrc(image: ReportImageEntry): string | null {
   }, [image.storage, image.imageId]);
 
   if (image.storage === "remote") return image.url;
-  if (resolved && image.imageId && resolved.imageId === image.imageId) return resolved.url;
+  if (resolved && image.imageId && resolved.imageId === image.imageId)
+    return resolved.url;
   return null;
 }
 
@@ -107,11 +115,9 @@ function VisualEvidence({
 
   if (images.length === 0) return null;
 
-  const title = language === "ru" ? "Визуальные материалы" : "Visual evidence";
-  const note = language === "ru"
-    ? "Изображения не отправлялись в контекст модели."
-    : "Images were not sent to the model context.";
-  const closeLabel = language === "ru" ? "Закрыть" : "Close";
+  const title = "Визуальные материалы";
+  const note = "Скриншоты и превью из аудита.";
+  const closeLabel = "Закрыть";
 
   return (
     <section className="mt-8 border-t border-line pt-6">
@@ -169,7 +175,7 @@ function EvidenceCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center font-mono text-[11px] text-faint">
-            loading…
+            загрузка…
           </div>
         )}
       </div>
@@ -178,7 +184,10 @@ function EvidenceCard({
           <span className="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted">
             {image.kind}
           </span>
-          <span className="truncate text-xs font-medium text-ink-soft" title={image.source}>
+          <span
+            className="truncate text-xs font-medium text-ink-soft"
+            title={image.source}
+          >
             {image.source}
           </span>
           {formatProfileLabel(image) && (
@@ -187,7 +196,10 @@ function EvidenceCard({
             </span>
           )}
         </div>
-        <p className="truncate font-mono text-[11px] text-muted" title={image.pageUrl ?? image.url}>
+        <p
+          className="truncate font-mono text-[11px] text-muted"
+          title={image.pageUrl ?? image.url}
+        >
           {truncateUrl(image.pageUrl ?? image.url)}
         </p>
         {imageMeta(image) && (
@@ -226,7 +238,10 @@ function Lightbox({
       >
         <div className="flex items-center justify-between rounded-t-xl border border-b-0 border-line-strong bg-surface px-5 py-3">
           <div className="min-w-0 text-sm text-ink-soft">
-            <div className="truncate font-mono" title={image.pageUrl ?? image.url}>
+            <div
+              className="truncate font-mono"
+              title={image.pageUrl ?? image.url}
+            >
               {image.pageUrl ?? image.url}
             </div>
             <div className="eyebrow mt-1 flex flex-wrap items-center gap-1.5 text-faint">
@@ -259,7 +274,7 @@ function Lightbox({
             />
           ) : (
             <div className="flex h-32 items-center justify-center font-mono text-[12px] text-faint">
-              loading…
+              загрузка…
             </div>
           )}
         </div>
@@ -269,17 +284,18 @@ function Lightbox({
 }
 
 export function ReportDialog() {
-  const { language, report, reportImages, reportOpen, setReportOpen } = useAuditStore(
-    useShallow((s) => ({
-      language: s.language,
-      report: s.report,
-      reportImages: s.reportImages,
-      reportOpen: s.reportOpen,
-      setReportOpen: s.setReportOpen,
-    }))
-  );
+  const { language, report, reportImages, reportOpen, setReportOpen } =
+    useAuditStore(
+      useShallow((s) => ({
+        language: s.language,
+        report: s.report,
+        reportImages: s.reportImages,
+        reportOpen: s.reportOpen,
+        setReportOpen: s.setReportOpen,
+      }))
+    );
   const title = language === "ru" ? "SEO-диагностика" : "SEO diagnostic report";
-  const formatLabel = language === "ru" ? "markdown" : "markdown";
+  const formatLabel = "markdown";
   const closeLabel = language === "ru" ? "Закрыть" : "Close";
 
   useEffect(() => {
@@ -302,14 +318,13 @@ export function ReportDialog() {
       className="fixed inset-0 z-50 flex flex-col bg-ink/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="SEO diagnostic report"
+      aria-label={title}
       onClick={() => setReportOpen(false)}
     >
       <div
         className="mx-auto flex h-full w-full max-w-6xl flex-col px-3 py-3 sm:px-5 sm:py-5"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Toolbar */}
         <div className="flex items-center justify-between rounded-t-xl border border-b-0 border-line-strong bg-surface px-5 py-2.5">
           <div className="flex items-center gap-2.5 text-ink">
             <FileText className="h-4 w-4 text-muted" />
@@ -328,7 +343,6 @@ export function ReportDialog() {
           </button>
         </div>
 
-        {/* Document */}
         <div className="terminal-scroll flex-1 overflow-y-auto overflow-x-hidden rounded-b-xl border border-line-strong bg-surface shadow-2xl">
           <div className="audit-report mx-auto w-full max-w-none px-5 py-6 sm:px-8 sm:py-8">
             <div className="prose prose-stone prose-sm max-w-none">

@@ -1,176 +1,120 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
+import Link from "next/link";
+import { Loader2, ArrowRight, Settings, AlertTriangle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { Loader2, ArrowRight } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
-
-function FieldLabel({
-  children,
-  hint,
-}: {
-  children: React.ReactNode;
-  hint?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <label className="eyebrow text-muted">{children}</label>
-      {hint && <span className="eyebrow text-faint">{hint}</span>}
-    </div>
-  );
-}
 
 export function AuditForm() {
   const {
     apiKey,
-    setApiKey,
-    loadingModels,
-    fetchModels,
-    group,
-    setGroup,
-    models,
     modelId,
-    setModelId,
-    language,
-    setLanguage,
     url,
     setUrl,
     running,
     runAudit,
     error,
     hydrate,
+    fetchModels,
   } = useAuditStore(
     useShallow((s) => ({
       apiKey: s.apiKey,
-      setApiKey: s.setApiKey,
-      loadingModels: s.loadingModels,
-      fetchModels: s.fetchModels,
-      group: s.group,
-      setGroup: s.setGroup,
-      models: s.models,
       modelId: s.modelId,
-      setModelId: s.setModelId,
-      language: s.language,
-      setLanguage: s.setLanguage,
       url: s.url,
       setUrl: s.setUrl,
       running: s.running,
       runAudit: s.runAudit,
       error: s.error,
       hydrate: s.hydrate,
+      fetchModels: s.fetchModels,
     }))
   );
 
   // Restore saved settings from localStorage and reload models if an API key exists.
   useEffect(() => {
     hydrate();
-    const { apiKey } = useAuditStore.getState();
-    if (apiKey.trim()) {
-      fetchModels();
+    const { apiKey: storedKey } = useAuditStore.getState();
+    if (storedKey.trim()) {
+      void fetchModels();
     }
   }, [hydrate, fetchModels]);
 
-  const groupedModels = useMemo(() => models[group], [models, group]);
+  const missingApiKey = !apiKey.trim();
+  const missingModel = !modelId;
+  const missingUrl = !url.trim();
+  const settingsIncomplete = missingApiKey || missingModel;
+  const disableRun = running || settingsIncomplete || missingUrl;
 
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-surface">
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
-        <span className="eyebrow text-muted">Configuration</span>
-        <span className="eyebrow text-faint">step 01</span>
+        <span className="eyebrow text-muted">запуск аудита</span>
+        <span className="eyebrow text-faint">шаг 01</span>
       </div>
 
       <div className="space-y-5 p-5 sm:p-6">
-        {/* API key */}
-        <div className="space-y-2">
-          <FieldLabel hint="stored locally">OpenCode API key</FieldLabel>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className="field font-mono"
-            />
-            <button
-              onClick={fetchModels}
-              disabled={loadingModels || !apiKey.trim()}
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm font-medium text-ink-soft transition hover:bg-line disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loadingModels ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Load models"
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Group + Model */}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div className="space-y-2">
-            <FieldLabel>Provider</FieldLabel>
-            <div className="grid grid-cols-2 gap-0 rounded-lg border border-line p-1">
-              {(["go", "zen"] as const).map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setGroup(g)}
-                  className={`rounded-md py-2 text-sm font-medium transition ${
-                    group === g
-                      ? "bg-ink text-paper"
-                      : "text-muted hover:bg-paper hover:text-ink-soft"
-                  }`}
+        {settingsIncomplete && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-3 text-[13px] leading-relaxed text-ink"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <div className="flex-1">
+              <p className="font-medium text-ink">
+                {missingApiKey
+                  ? "Не указан API-ключ"
+                  : "Не выбрана модель"}
+              </p>
+              <p className="mt-1 text-muted">
+                Перед запуском аудита откройте{" "}
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1 font-medium text-ink underline-offset-2 hover:underline"
                 >
-                  <span className="font-mono text-[11px] uppercase tracking-wider">
-                    opencode {g}
-                  </span>
-                </button>
-              ))}
+                  <Settings className="h-3.5 w-3.5" />
+                  Настройки
+                </Link>{" "}
+                и заполните ключ доступа и модель.
+              </p>
             </div>
           </div>
+        )}
 
-          <div className="space-y-2">
-            <FieldLabel>Model</FieldLabel>
-            <select
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              className="field"
-            >
-              {groupedModels.length === 0 && (
-                <option value="">Load models first…</option>
-              )}
-              {groupedModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+        {running && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-3 text-[13px] leading-relaxed text-ink"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+            <div>
+              <p className="font-medium text-ink">Не обновляйте вкладку</p>
+              <p className="mt-1 text-muted">
+                Сейчас идёт аудит. Если обновить или закрыть страницу, текущая
+                проверка будет прекращена и её нельзя будет продолжить с того же
+                места.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Language + URL */}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div className="space-y-2">
-            <FieldLabel>Report language</FieldLabel>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as "en" | "ru")}
-              className="field"
-            >
-              <option value="en">English</option>
-              <option value="ru">Русский</option>
-            </select>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="eyebrow text-muted" htmlFor="audit-url">
+              URL сайта
+            </label>
+            <span className="eyebrow text-faint">например: example.com</span>
           </div>
-
-          <div className="space-y-2">
-            <FieldLabel>Target URL</FieldLabel>
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="example.com"
-              className="field font-mono"
-            />
-          </div>
+          <input
+            id="audit-url"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="example.com"
+            className="field font-mono"
+            autoComplete="off"
+            spellCheck={false}
+          />
         </div>
 
         {error && !running && (
@@ -184,25 +128,36 @@ export function AuditForm() {
       <div className="flex flex-col gap-3 border-t border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p className="text-sm text-muted">
           {running
-            ? "The model is inspecting the site with browser tools…"
-            : "The audit runs headless Chromium and reports findings with evidence."}
+            ? "Браузер обходит сайт и снимает технические показатели…"
+            : "Аудит запускается в headless Chromium и формирует отчёт с доказательствами."}
         </p>
-        <button
-          onClick={runAudit}
-          disabled={running || !apiKey.trim() || !modelId || !url.trim()}
-          className="group inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {running ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Running audit…
-            </>
-          ) : (
-            <>
-              Run audit
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          {settingsIncomplete && (
+            <Link
+              href="/settings"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft transition hover:border-ink hover:text-ink"
+            >
+              <Settings className="h-4 w-4" />
+              Открыть настройки
+            </Link>
           )}
-        </button>
+          <button
+            onClick={runAudit}
+            disabled={disableRun}
+            className="group inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {running ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Идёт аудит…
+              </>
+            ) : (
+              <>
+                Запустить аудит
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </section>
   );

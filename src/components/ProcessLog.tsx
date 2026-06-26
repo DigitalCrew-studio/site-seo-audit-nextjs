@@ -4,6 +4,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 
+function formatLogSummary(
+  log: ReturnType<typeof useAuditStore.getState>["logs"][number]
+): string {
+  switch (log.type) {
+    case "status":
+      return log.message;
+    case "tool":
+      return `$ ${log.name}`;
+    case "tool_end":
+      return `${log.name} ${log.ok ? "готово" : "ошибка"} · ${log.durationMs}мс`;
+    case "debug":
+      return `· ${log.message}`;
+    case "tool_error":
+      return `! ${log.name} — ошибка: ${log.error}`;
+    case "error":
+      return `✕ ${log.message}`;
+  }
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  const entries = Object.entries(args)
+    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    .join(", ");
+  if (entries.length <= 800) return entries;
+  return entries.slice(0, 800).trimEnd() + "…";
+}
+
 export function ProcessLog() {
   const { logs, running, debugMode, setDebugMode } = useAuditStore(
     useShallow((s) => ({
@@ -16,26 +43,25 @@ export function ProcessLog() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
-  // Auto-scroll the log panel as new entries arrive.
   useEffect(() => {
     if (!open) return;
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, open]);
 
-  // Keep every log in the store; the UI filters debug-only entries based on
-  // the live toggle so a flip during the run is reflected immediately.
   const visibleLogs = useMemo(
     () =>
       debugMode
         ? logs
-        : logs.filter(
-            (l) => l.type !== "debug" && l.type !== "tool_end"
-          ),
+        : logs.filter((l) => l.type !== "debug" && l.type !== "tool_end"),
     [logs, debugMode]
   );
 
   const latestLog = visibleLogs.at(-1);
-  const latestText = latestLog ? formatLogSummary(latestLog) : running ? "Starting..." : "No events";
+  const latestText = latestLog
+    ? formatLogSummary(latestLog)
+    : running
+      ? "Запуск…"
+      : "Нет событий";
 
   if (!running && logs.length === 0) return null;
 
@@ -48,19 +74,19 @@ export function ProcessLog() {
         className="flex w-full min-w-0 items-center gap-3 text-left"
       >
         <span className="eyebrow shrink-0 text-faint">
-          process — {running ? "live" : "ended"}
+          процесс — {running ? "идёт" : "завершён"}
         </span>
         {running && (
           <span className="flex shrink-0 items-center gap-2">
             <span className="pulse-dot" />
-            <span className="eyebrow text-accent">auditing</span>
+            <span className="eyebrow text-accent">аудит</span>
           </span>
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted">
           {latestText}
         </span>
         <span className="eyebrow shrink-0 text-faint">
-          {visibleLogs.length} events · {open ? "hide" : "show"}
+          {visibleLogs.length} событий · {open ? "скрыть" : "показать"}
         </span>
       </button>
 
@@ -74,8 +100,8 @@ export function ProcessLog() {
           aria-pressed={debugMode}
           title={
             debugMode
-              ? "Hide debug events and tool completion details"
-              : "Show debug events and tool completion details"
+              ? "Скрыть отладочные события"
+              : "Показать отладочные события"
           }
           className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
             debugMode
@@ -88,107 +114,79 @@ export function ProcessLog() {
               debugMode ? "bg-positive" : "bg-faint"
             }`}
           />
-          debug
+          подробно
         </button>
       </div>
 
-      {/* Body */}
-      {open && <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-x-auto overflow-y-auto font-mono text-[13px] leading-relaxed">
-        {visibleLogs.map((log, idx) => (
-          <div key={idx} className="flex min-w-0 gap-3">
-            <span className="shrink-0 select-none text-faint">{log.time}</span>
-            <span className="min-w-0 break-words">
-              {log.type === "status" && (
-                <span className="text-muted">{log.message}</span>
-              )}
-              {log.type === "tool" && (
-                <span>
-                  <span className="text-faint">$</span>{" "}
-                  <span className="text-positive">{log.name}</span>
-                  <span className="text-muted">
-                    (
-                    {formatArgs(log.args)}
-                    )
-                  </span>
-                </span>
-              )}
-              {log.type === "tool_end" && (
-                <span className="text-ink-soft">
-                  <span className="text-faint">↳</span> {log.name}{" "}
-                  <span
-                    className={
-                      log.ok ? "text-positive" : "text-accent"
-                    }
-                  >
-                    {log.ok ? "ok" : "failed"}
-                  </span>
-                  <span className="text-muted">
-                    {" "}· {log.durationMs}ms · {log.bytes}B
-                  </span>
-                  {log.error && (
-                    <span className="text-accent"> — {log.error}</span>
-                  )}
-                </span>
-              )}
-              {log.type === "debug" && (
-                <span className="text-ink-soft">
-                  <span className="text-faint">·</span> {log.message}
-                  {log.data && Object.keys(log.data).length > 0 && (
+      {open && (
+        <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-x-auto overflow-y-auto font-mono text-[13px] leading-relaxed">
+          {visibleLogs.map((log, idx) => (
+            <div key={idx} className="flex min-w-0 gap-3">
+              <span className="shrink-0 select-none text-faint">{log.time}</span>
+              <span className="min-w-0 break-words">
+                {log.type === "status" && (
+                  <span className="text-muted">{log.message}</span>
+                )}
+                {log.type === "tool" && (
+                  <span>
+                    <span className="text-faint">$</span>{" "}
+                    <span className="text-positive">{log.name}</span>
                     <span className="text-muted">
-                      {" "}(
-                      {formatArgs(log.data)}
-                      )
+                      ({formatArgs(log.args)})
                     </span>
-                  )}
-                </span>
-              )}
-              {log.type === "tool_error" && (
-                <span className="text-accent">
-                  <span className="text-faint">!</span> {log.name} failed —{" "}
-                  {log.error}
-                </span>
-              )}
-              {log.type === "error" && (
-                <span className="text-red-700">
-                  <span className="text-faint">✕</span> {log.message}
-                </span>
-              )}
-            </span>
-          </div>
-        ))}
-        {running && (
-          <div className="flex items-center gap-2 text-faint">
-            <span className="inline-block h-3.5 w-1.5 animate-pulse bg-faint" />
-            <span>waiting…</span>
-          </div>
-        )}
-        <div ref={logsEndRef} />
-      </div>}
+                  </span>
+                )}
+                {log.type === "tool_end" && (
+                  <span className="text-ink-soft">
+                    <span className="text-faint">↳</span> {log.name}{" "}
+                    <span
+                      className={log.ok ? "text-positive" : "text-accent"}
+                    >
+                      {log.ok ? "готово" : "ошибка"}
+                    </span>
+                    <span className="text-muted">
+                      {" "}
+                      · {log.durationMs}мс · {log.bytes}B
+                    </span>
+                    {log.error && (
+                      <span className="text-accent"> — {log.error}</span>
+                    )}
+                  </span>
+                )}
+                {log.type === "debug" && (
+                  <span className="text-ink-soft">
+                    <span className="text-faint">·</span> {log.message}
+                    {log.data && Object.keys(log.data).length > 0 && (
+                      <span className="text-muted">
+                        {" "}
+                        ({formatArgs(log.data)})
+                      </span>
+                    )}
+                  </span>
+                )}
+                {log.type === "tool_error" && (
+                  <span className="text-accent">
+                    <span className="text-faint">!</span> {log.name} — ошибка:{" "}
+                    {log.error}
+                  </span>
+                )}
+                {log.type === "error" && (
+                  <span className="text-red-700">
+                    <span className="text-faint">✕</span> {log.message}
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+          {running && (
+            <div className="flex items-center gap-2 text-faint">
+              <span className="inline-block h-3.5 w-1.5 animate-pulse bg-faint" />
+              <span>ожидание…</span>
+            </div>
+          )}
+          <div ref={logsEndRef} />
+        </div>
+      )}
     </section>
   );
-}
-
-function formatArgs(args: Record<string, unknown>): string {
-  const entries = Object.entries(args)
-    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-    .join(", ");
-  if (entries.length <= 800) return entries;
-  return entries.slice(0, 800).trimEnd() + "…";
-}
-
-function formatLogSummary(log: ReturnType<typeof useAuditStore.getState>["logs"][number]): string {
-  switch (log.type) {
-    case "status":
-      return log.message;
-    case "tool":
-      return `$ ${log.name}`;
-    case "tool_end":
-      return `${log.name} ${log.ok ? "ok" : "failed"} · ${log.durationMs}ms`;
-    case "debug":
-      return `· ${log.message}`;
-    case "tool_error":
-      return `! ${log.name} failed — ${log.error}`;
-    case "error":
-      return `✕ ${log.message}`;
-  }
 }

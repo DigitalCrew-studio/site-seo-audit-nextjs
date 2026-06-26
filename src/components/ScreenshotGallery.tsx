@@ -16,7 +16,7 @@ function formatBytes(bytes: number): string {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString();
+    return new Date(iso).toLocaleTimeString("ru-RU");
   } catch {
     return iso;
   }
@@ -35,22 +35,21 @@ function formatProfile(shot: ScreenshotEntry): string | null {
     }
     return shot.profile;
   }
-  if (shot.viewport && Number.isFinite(shot.viewport.width) && Number.isFinite(shot.viewport.height)) {
+  if (
+    shot.viewport &&
+    Number.isFinite(shot.viewport.width) &&
+    Number.isFinite(shot.viewport.height)
+  ) {
     return `${shot.viewport.width}×${shot.viewport.height}`;
   }
   return null;
 }
 
-/**
- * Resolves a screenshot entry to a usable image URL.
- *
- * The current store always persists screenshots as IndexedDB blobs identified
- * by `imageId`; this hook loads the blob on demand and produces a revoked
- * object URL. The hook returns `null` while loading and when the resolved
- * image is for a different id than the one currently requested.
- */
 function useScreenshotSrc(shot: ScreenshotEntry): string | null {
-  const [resolved, setResolved] = useState<{ imageId: string; url: string } | null>(null);
+  const [resolved, setResolved] = useState<{
+    imageId: string;
+    url: string;
+  } | null>(null);
 
   useEffect(() => {
     if (shot.storage !== "indexeddb" || !shot.imageId) {
@@ -74,7 +73,8 @@ function useScreenshotSrc(shot: ScreenshotEntry): string | null {
   }, [shot.imageId, shot.storage]);
 
   if (shot.storage === "memory") return null;
-  if (resolved && shot.imageId && resolved.imageId === shot.imageId) return resolved.url;
+  if (resolved && shot.imageId && resolved.imageId === shot.imageId)
+    return resolved.url;
   return null;
 }
 
@@ -94,23 +94,23 @@ function ShotThumb({ shot }: { shot: ScreenshotEntry }) {
           /* eslint-disable-next-line @next/next/no-img-element -- object URL from IndexedDB, not optimizable by next/image */
           <img
             src={src}
-            alt={shot.url ?? "Screenshot"}
+            alt={shot.url ?? "Скриншот"}
             className="h-full w-full object-cover object-top transition duration-200 group-hover:scale-[1.02]"
             loading="lazy"
             decoding="async"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center font-mono text-[11px] text-faint">
-            loading…
+            загрузка…
           </div>
         )}
       </div>
       <div className="space-y-1 px-3 py-2">
         <p
           className="truncate font-mono text-[12px] text-ink-soft"
-          title={shot.url ?? "(current page)"}
+          title={shot.url ?? "(текущая страница)"}
         >
-          {shot.url ? truncateUrl(shot.url) : "(current page)"}
+          {shot.url ? truncateUrl(shot.url) : "(текущая страница)"}
         </p>
         <div className="flex items-center justify-between gap-2 font-mono text-[11px] text-faint">
           <span>{formatTime(shot.takenAt)}</span>
@@ -126,7 +126,13 @@ function ShotThumb({ shot }: { shot: ScreenshotEntry }) {
   );
 }
 
-function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => void }) {
+function Lightbox({
+  shot,
+  onClose,
+}: {
+  shot: ScreenshotEntry;
+  onClose: () => void;
+}) {
   const src = useScreenshotSrc(shot);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -146,7 +152,7 @@ function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => voi
       className="fixed inset-0 z-50 flex flex-col bg-ink/80 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Screenshot preview"
+      aria-label="Просмотр скриншота"
       onClick={onClose}
     >
       <div
@@ -158,9 +164,9 @@ function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => voi
             <ImageIcon className="h-4 w-4 shrink-0 text-muted" />
             <span
               className="truncate font-mono text-sm text-ink-soft"
-              title={shot.url ?? "(current page)"}
+              title={shot.url ?? "(текущая страница)"}
             >
-              {shot.url ?? "(current page)"}
+              {shot.url ?? "(текущая страница)"}
             </span>
             <span className="eyebrow shrink-0 text-faint">
               {formatBytes(shot.bytes)}
@@ -179,7 +185,7 @@ function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => voi
             onClick={onClose}
             className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted transition hover:bg-paper hover:text-ink"
           >
-            Close
+            Закрыть
             <span className="eyebrow rounded border border-line px-1 py-0.5 text-faint">
               esc
             </span>
@@ -191,13 +197,13 @@ function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => voi
             /* eslint-disable-next-line @next/next/no-img-element -- object URL from IndexedDB, not optimizable by next/image */
             <img
               src={src}
-              alt={shot.url ?? "Screenshot"}
+              alt={shot.url ?? "Скриншот"}
               className="mx-auto block max-w-full"
               decoding="async"
             />
           ) : (
             <div className="flex h-32 items-center justify-center font-mono text-[12px] text-faint">
-              loading…
+              загрузка…
             </div>
           )}
         </div>
@@ -212,8 +218,6 @@ export function ScreenshotGallery() {
   );
   const [openId, setOpenId] = useState<string | null>(null);
 
-  // `openShot` is derived; if the id is stale (e.g. screenshots reset on a
-  // new audit run) this simply resolves to null and the lightbox stays closed.
   const openShot = useMemo(
     () => screenshots.find((s) => s.id === openId) ?? null,
     [screenshots, openId]
@@ -235,21 +239,17 @@ export function ScreenshotGallery() {
     <section className="border-y border-line py-4">
       <div className="mb-3 flex items-center gap-2">
         <ImageIcon className="h-4 w-4 text-muted" />
-        <span className="eyebrow text-muted">screenshots</span>
+        <span className="eyebrow text-muted">скриншоты</span>
         <span className="eyebrow text-faint">— {screenshots.length}</span>
-        <span className="eyebrow ml-auto text-faint">
-          omitted from model context
-        </span>
+        <span className="eyebrow ml-auto text-faint">визуальные доказательства</span>
       </div>
 
-      {/* Body */}
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {screenshots.map((shot) => (
           <ShotThumb key={shot.id} shot={shot} />
         ))}
       </div>
 
-      {/* Lightbox preview */}
       {openShot && <Lightbox shot={openShot} onClose={() => setOpenId(null)} />}
     </section>
   );

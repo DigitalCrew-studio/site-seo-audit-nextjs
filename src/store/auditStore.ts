@@ -342,6 +342,41 @@ export const useAuditStore = create<AuditState>((set, get) => {
     });
   };
 
+  // Persist terminal states from the same state patch that updates the UI.
+  const persistTerminalSnapshot = (
+    patch: Partial<AuditState>,
+    status: SavedAuditStatus
+  ) => {
+    set((s) => {
+      const nextState: AuditState = { ...s, ...patch };
+      const snapshot = buildSavedAuditSnapshot(nextState, status);
+      if (!snapshot) return patch;
+      const without = s.savedAudits.filter(
+        (entry) => entry.id !== snapshot.id
+      );
+      const next = [snapshot, ...without].slice(0, MAX_SAVED_AUDITS);
+      if (next.length < without.length + 1) {
+        const liveIds = new Set<string>();
+        for (const audit of next) {
+          for (const id of collectImageIds(audit)) liveIds.add(id);
+        }
+        const removed = without.slice(next.length - without.length);
+        for (const dropped of removed) {
+          const droppedIds = collectImageIds(dropped).filter(
+            (id) => !liveIds.has(id)
+          );
+          if (droppedIds.length > 0) void deleteAuditImages(droppedIds);
+        }
+      }
+      writeSavedAuditsToStorage(next);
+      return {
+        ...patch,
+        savedAudits: next,
+        activeSavedAuditId: snapshot.id,
+      };
+    });
+  };
+
   return {
     apiKey: "",
     models: { go: [], zen: [] },
@@ -765,16 +800,12 @@ export const useAuditStore = create<AuditState>((set, get) => {
             // If this run was already superseded, do not let the late
             // error event clobber the new active saved audit.
             if (runId !== id) return;
-            set({ error: p.message });
             addLog({ type: "error", message: p.message, time: now() });
-            const snapshot = buildSavedAuditSnapshot(get(), "failed");
-            if (snapshot) persistAudit(snapshot, { pruneOrphans: true });
+            persistTerminalSnapshot({ error: p.message }, "failed");
           },
           onDone: (p) => {
             if (runId !== id) return;
-            set({ report: p.report });
-            const snapshot = buildSavedAuditSnapshot(get(), "completed");
-            if (snapshot) persistAudit(snapshot, { pruneOrphans: true });
+            persistTerminalSnapshot({ report: p.report }, "completed");
           },
         });
       } catch (err) {
@@ -787,16 +818,15 @@ export const useAuditStore = create<AuditState>((set, get) => {
           // (i.e. the still-current one). Late aborts from a superseded
           // run would otherwise wipe the new live state.
           if (runId === id) {
-            const snapshot = buildSavedAuditSnapshot(get(), "interrupted");
-            if (snapshot) persistAudit(snapshot, { pruneOrphans: true });
+            persistTerminalSnapshot({}, "interrupted");
           }
           return;
         }
         const msg = err instanceof Error ? err.message : String(err);
-        setIfCurrent(() => set({ error: msg }));
-        addLog({ type: "error", message: msg, time: now() });
-        const snapshot = buildSavedAuditSnapshot(get(), "failed");
-        if (snapshot) persistAudit(snapshot, { pruneOrphans: true });
+        if (runId === id) {
+          addLog({ type: "error", message: msg, time: now() });
+          persistTerminalSnapshot({ error: msg }, "failed");
+        }
       } finally {
         if (runId === id) {
           set({ running: false });
