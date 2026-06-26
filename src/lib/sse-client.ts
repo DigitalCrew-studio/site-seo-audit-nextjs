@@ -2,6 +2,7 @@ import type {
   SSEDebug,
   SSEError,
   SSEReport,
+  SSEReportImage,
   SSEScreenshot,
   SSEStatus,
   SSETool,
@@ -20,6 +21,7 @@ export type SSEHandlers = {
   onScreenshot?: (payload: SSEScreenshot) => void;
   onError?: (payload: SSEError) => void;
   onDone?: (payload: SSEReport) => void;
+  onReportImage?: (payload: SSEReportImage) => void;
 };
 
 /**
@@ -81,6 +83,9 @@ export async function consumeSSE(
             break;
           case "screenshot":
             handlers.onScreenshot?.(payload as SSEScreenshot);
+            break;
+          case "report_image":
+            handlers.onReportImage?.(payload as SSEReportImage);
             break;
           case "error":
             handlers.onError?.(payload as SSEError);

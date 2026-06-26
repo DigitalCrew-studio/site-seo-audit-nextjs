@@ -60,29 +60,26 @@ export function ScreenshotGallery() {
   if (screenshots.length === 0) return null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line-strong bg-[#0f0f0e]">
-      {/* Title bar — mirrors ProcessLog's window chrome for visual rhythm. */}
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/80" />
-        <span className="eyebrow ml-2 text-white/35">screenshots</span>
-        <span className="eyebrow text-white/25">— {screenshots.length}</span>
-        <span className="eyebrow ml-auto text-white/25">
+    <section className="border-y border-line py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <ImageIcon className="h-4 w-4 text-muted" />
+        <span className="eyebrow text-muted">screenshots</span>
+        <span className="eyebrow text-faint">— {screenshots.length}</span>
+        <span className="eyebrow ml-auto text-faint">
           omitted from model context
         </span>
       </div>
 
       {/* Body */}
-      <div className="grid gap-3 p-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {screenshots.map((shot) => (
           <button
             key={shot.id}
             type="button"
             onClick={() => setOpenId(shot.id)}
-            className="group flex flex-col overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] text-left transition hover:border-white/25 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            className="group flex flex-col overflow-hidden rounded-lg border border-line bg-transparent text-left transition hover:border-line-strong hover:bg-surface/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/15"
           >
-            <div className="relative aspect-video w-full overflow-hidden bg-black/50">
+            <div className="relative aspect-video w-full overflow-hidden bg-line/30">
               {/* eslint-disable-next-line @next/next/no-img-element -- data: URL, not optimizable by next/image */}
               <img
                 src={dataUrlFor(shot)}
@@ -94,12 +91,12 @@ export function ScreenshotGallery() {
             </div>
             <div className="space-y-1 px-3 py-2">
               <p
-                className="truncate font-mono text-[12px] text-white/80"
+                className="truncate font-mono text-[12px] text-ink-soft"
                 title={shot.url ?? "(current page)"}
               >
                 {shot.url ? truncateUrl(shot.url) : "(current page)"}
               </p>
-              <div className="flex items-center justify-between font-mono text-[11px] text-white/40">
+              <div className="flex items-center justify-between font-mono text-[11px] text-faint">
                 <span>{formatTime(shot.takenAt)}</span>
                 <span>{formatBytes(shot.bytes)}</span>
               </div>

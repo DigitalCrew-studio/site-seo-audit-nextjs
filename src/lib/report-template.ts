@@ -1,112 +1,253 @@
 import type { AuditLanguage } from "@/lib/types";
 
-/**
- * The canonical report template, aligned with the "Required final report
- * structure" from the updated site-seo-audit skill. The model MUST produce a
- * report matching this exact structure, filling each section with
- * evidence-based content.
- */
-export const REPORT_TEMPLATE = `# SEO Audit Report: <site>
+const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 
-## Executive summary
-- Overall status:
-- Top risks:
-- Top opportunities:
-- What was verified:
-- What was not assessed:
+## Исполнительное заключение
+<1-3 предложения: общее диагностическое состояние SEO (критично / неудовлетворительно / удовлетворительно / хорошо), краткая сводка по индексируемости, метаданным, контенту, производительности. Только диагноз, без рекомендаций и плана действий.>
+
+## Снимок состояния SEO
+<Свободная диагностическая сводка: 4-7 пунктов, текущее состояние vs ожидаемая норма для каждой ключевой области: индексируемость, метаданные, контент, производительность, техническая гигиена, доверие, измеримость.>
+
+## Матрица охвата проверок
+| Область / инструмент | Статус охвата | Краткие доказательства |
+|---|---|---|
+| inspect_http | Проверено / Частично / Не оценено / Требует данных | <короткая ссылка на результат> |
+| inspect_page_seo | ... | ... |
+| parse_sitemap | ... | ... |
+| crawl_site_sample | ... | ... |
+| extract_structured_data | ... | ... |
+| inspect_social_preview | ... | ... |
+| inspect_hreflang | ... | ... |
+| resource_inventory | ... | ... |
+| run_lighthouse | ... | ... |
+| inspect_mobile_rendering | ... | ... |
+| inspect_analytics_tags | ... | ... |
+| check_link_health | ... | ... |
+| inspect_llms_txt | ... | ... |
+| inspect_entity_trust | ... | ... |
+| dns_and_security_check | ... | ... |
+| batch_check_urls | ... | ... |
+
+## Скоркард
+| Категория | Проверено | Статус | Краткий комментарий |
+|---|---:|---|---|
+| Техническая индексируемость | /20 |  |  |
+| Метаданные и SERP-представление | /10 |  |  |
+| Контент и поисковый интент | /15 |  |  |
+| JS-рендеринг и сырой HTML | /10 |  |  |
+| Структурированные данные | /10 |  |  |
+| Внутренние ссылки и краулинг | /10 |  |  |
+| Производительность и мобильная пригодность | /15 |  |  |
+| Локальность / сущность / соцсети | /5 |  |  |
+| Аналитика и маркетинговая готовность | /5 |  |  |
+| **Общий итог** | **/100** |  |  |
+
+## Диагностика Lighthouse / производительности
+- LCP: <цвет и шкала █/░> — <значение, норма>
+- CLS: <цвет и шкала> — <значение, норма>
+- TBT: <цвет и шкала> — <значение, норма>
+- FCP: <цвет и шкала> — <значение, норма>
+- TTI: <цвет и шкала> — <значение, норма>
+- Performance score: <цвет и шкала> — <значение, норма>
+- Accessibility: <цвет и шкала> — <значение, норма>
+- Best Practices: <цвет и шкала> — <значение, норма>
+- SEO: <цвет и шкала> — <значение, норма>
+(Если Lighthouse / PageSpeed не запускался — явно указать «Не оценено» и причину.)
+
+## Анализ по категориям
+<Свободный диагностический текст по каждой ключевой области, объединяющий факты. Только наблюдения, без рекомендаций и плана действий.>
+
+## Основные SEO-риски
+| Область | URL | Доказательство | Текущее состояние | Норма или ориентир | Значение для SEO | Серьёзность | Достоверность |
+|---|---|---|---|---|---|---|---|
+| ... | ... | ... | ... | ... | ... | Критично / Высокая / Средняя / Низкая / Инфо | Высокая / Средняя / Низкая |
+(Одна строка на каждый значимый риск. Без рекомендаций по исправлению, владельцев, сроков или шагов внедрения.)
+
+## Не оценено / ограничения
+<Что не удалось проверить внутри URL-only аудита: например, инструмент не запустился, доступ закрыт, данных на публичной странице нет, проверка требует авторизованного API. Не упоминай Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports как «не предоставлено», потому что текущий интерфейс принимает только URL.>
+
+## Приложение с доказательствами
+- Целевой URL:
+- Протестированные URL:
+- Использованные инструменты:
+- Использованные данные: URL-only публичные данные и результаты инструментов
+- HTTP-статусы и заголовки (выборка):
+- Сводка по sitemap.xml:
+- Краткая сводка Lighthouse / PageSpeed:
+
+## Финальное заключение
+<1-2 предложения: итоговая диагностическая оценка. Без плана действий, roadmap, владельцев или сроков.>`;
+
+const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
+
+## Executive conclusion
+<1-3 sentences: overall SEO diagnostic state (critical / unsatisfactory / satisfactory / good), short summary of indexability, metadata, content, performance. Diagnosis only — no recommendations or plan.>
+
+## SEO health snapshot
+<Free-form diagnostic summary: 4-7 bullets, current state vs expected benchmark for each key area: indexability, metadata, content, performance, technical hygiene, trust, measurability.>
+
+## Check coverage matrix
+| Area / tool | Coverage status | Brief evidence |
+|---|---|---|
+| inspect_http | Checked / Partially checked / Not assessed / Requires data | <short result pointer> |
+| inspect_page_seo | ... | ... |
+| parse_sitemap | ... | ... |
+| crawl_site_sample | ... | ... |
+| extract_structured_data | ... | ... |
+| inspect_social_preview | ... | ... |
+| inspect_hreflang | ... | ... |
+| resource_inventory | ... | ... |
+| run_lighthouse | ... | ... |
+| inspect_mobile_rendering | ... | ... |
+| inspect_analytics_tags | ... | ... |
+| check_link_health | ... | ... |
+| inspect_llms_txt | ... | ... |
+| inspect_entity_trust | ... | ... |
+| dns_and_security_check | ... | ... |
+| batch_check_urls | ... | ... |
 
 ## Scorecard
-| Category | Verified score | Potential score | Status | Notes |
-|---|---:|---:|---|---|
-| Technical Indexability | /20 | /20 |  |  |
-| Metadata and SERP Presentation | /10 | /10 |  |  |
-| Content and Search Intent Fit | /15 | /15 |  |  |
-| JavaScript Rendering and Raw HTML | /10 | /10 |  |  |
-| Structured Data and Entity Clarity | /10 | /10 |  |  |
-| Internal Links and Crawl Hygiene | /10 | /10 |  |  |
-| Performance and Mobile Usability | /15 | /15 |  |  |
-| Off-page Links and Authority | /5 | /5 |  |  |
-| Local / Social / Brand Entity | /3 | /3 |  |  |
-| Analytics and Marketing Readiness | /2 | /2 |  |  |
-| **Overall** | **/100** | **/100** |  |  |
+| Category | Verified | Status | Short comment |
+|---|---:|---|---|
+| Technical indexability | /20 |  |  |
+| Metadata and SERP presentation | /10 |  |  |
+| Content and search intent fit | /15 |  |  |
+| JS rendering and raw HTML | /10 |  |  |
+| Structured data | /10 |  |  |
+| Internal links and crawl hygiene | /10 |  |  |
+| Performance and mobile usability | /15 |  |  |
+| Local / entity / social | /5 |  |  |
+| Analytics and marketing readiness | /5 |  |  |
+| **Overall** | **/100** |  |  |
 
-## Top 5 priorities
-<The five highest-impact actions, each with a one-line rationale>
+## Lighthouse / performance diagnostics
+- LCP: <color and gauge █/░> — <value, benchmark>
+- CLS: <color and gauge> — <value, benchmark>
+- TBT: <color and gauge> — <value, benchmark>
+- FCP: <color and gauge> — <value, benchmark>
+- TTI: <color and gauge> — <value, benchmark>
+- Performance score: <color and gauge> — <value, benchmark>
+- Accessibility: <color and gauge> — <value, benchmark>
+- Best Practices: <color and gauge> — <value, benchmark>
+- SEO: <color and gauge> — <value, benchmark>
+(If Lighthouse / PageSpeed was not run — explicitly mark "Not assessed" and state the reason.)
 
-## Findings
-<One "Expanded finding" block per actionable issue, ordered by priority P0→P3>
+## Category analysis
+<Free-form diagnostic narrative per key area, summarising facts. Observations only, no recommendations or action plan.>
 
-## Roadmap
-- 0-7 days:
-- 2-4 weeks:
-- 1-3 months:
+## Main SEO risks
+| Area | URL | Evidence | Current state | Normal benchmark | SEO implication | Severity | Confidence |
+|---|---|---|---|---|---|---|---|
+| ... | ... | ... | ... | ... | ... | Critical / High / Medium / Low / Info | High / Medium / Low |
+(One row per significant risk. No fix instructions, owners, timelines, or implementation steps.)
 
-## Validation checklist
-<Concrete steps to confirm each major fix landed>
+## Not assessed / limitations
+<What could not be tested within the URL-only audit: e.g. a tool failed, public access was blocked, public page data was absent, or an authenticated API would be required. Do not mention Search Console, uploaded reports, Ahrefs/Semrush/backlink exports as “not provided”, because the current interface accepts only a URL.>
 
-## Appendix
+## Evidence appendix
+- Target URL:
 - Tested URLs:
-- Tools/data used:
-- Access/data required:`;
+- Tools used:
+- Data used: URL-only public data and tool results
+- HTTP statuses and headers (sample):
+- sitemap.xml summary:
+- Lighthouse / PageSpeed summary:
 
-/**
- * The expanded finding block the model must use for every individual finding,
- * matching the "Required finding format" from the updated skill.
- */
-export const FINDING_TEMPLATE = `### [P0/P1/P2/P3] <issue title>
+## Final conclusion
+<1-2 sentences: final diagnostic verdict. No action plan, roadmap, owners, or timelines.>`;
 
-- Area: <technical/indexability/content/rendering/schema/performance/regional/etc.>
-- Affected URL(s): <URL list, pattern, or template name>
-- Evidence: <URL, HTTP header, HTML snippet, rendered DOM observation, tool result, or stated limitation>
-- Current state: <how the site behaves now>
-- Expected state: <specific desired behavior>
-- Why it matters: <impact on crawl/index/ranking/UX/conversions>
-- Recommended fix: <specific fix>
-- Validation method: <how to confirm the fix>
-- Owner: <SEO/Frontend/Backend/DevOps/Content/Marketing>
-- Confidence: <High/Medium/Low>`;
+const RU_BENCHMARKS = `- HTTP-каноникал: индексируемые страницы должны отвечать 200 и быть self-canonical там, где это уместно.
+- sitemap.xml: должен содержать только канонические индексируемые URL (без noindex, без 404, без параметризованных/приватных страниц).
+- Title: обычно 30-60 символов, уникальный, релевантный содержимому.
+- Meta description: обычно 120-160 символов, уникальный, отражает суть страницы.
+- H1: на основной (и большинстве) странице должен быть один чёткий H1.
+- LCP: хорошо ≤ 2.5s, требует улучшения 2.5-4s, плохо > 4s.
+- CLS: хорошо ≤ 0.1.
+- TBT: хорошо ≤ 200ms.
+- Lighthouse Performance: хорошо ≥ 90, требует улучшения 50-89, плохо < 50.
+- Tap targets: обычно ≥ 48x48 CSS px.
+- Читаемый мобильный текст: обычно ≥ 12-14px.
+- OG image: обычно 1200x630 и достаточно лёгкий (ориентир < 300KB).
+- hreflang: должен включать валидные взаимные ссылки и x-default там, где это уместно.
+- Аналитика/измерения: не прямой фактор ранжирования; отмечай только готовность/наблюдаемость.
+- Безопасность / DNS / email-trust: техническое доверие и операционная готовность, не прямой фактор ранжирования.`;
 
-/** Strict instructions (localized) telling the model how to fill the template. */
+const EN_BENCHMARKS = `- HTTP canonical: indexable pages should return 200 and be self-canonical where appropriate.
+- sitemap.xml: should contain only canonical indexable URLs (no noindex, no 404, no parameter / private URLs).
+- Title: typically 30-60 chars, unique, relevant to the page content.
+- Meta description: typically 120-160 chars, unique, summarises the page.
+- H1: the main page (and most pages) should normally have one clear H1.
+- LCP: good ≤ 2.5s, needs improvement 2.5-4s, poor > 4s.
+- CLS: good ≤ 0.1.
+- TBT: good ≤ 200ms.
+- Lighthouse Performance: good ≥ 90, needs improvement 50-89, poor < 50.
+- Tap targets: typically ≥ 48x48 CSS px.
+- Readable mobile text: typically ≥ 12-14px.
+- OG image: typically 1200x630 and reasonably lightweight (< 300KB guideline).
+- hreflang: should include valid reciprocals and x-default where appropriate.
+- Analytics / measurement: not a direct ranking factor; report readiness / observability only.
+- Security / DNS / email trust: technical trust and operational readiness, not direct SEO ranking factors.`;
+
+const RU_GAUGE_LEGEND = `- 🟢 хорошо: ██████████ / █████████░ / ████████░░ / ...
+- 🟡 требует улучшения: ██████░░░░ / █████░░░░░ / ████░░░░░░ / ...
+- 🔴 плохо: ███░░░░░░░ / ██░░░░░░░░ / █░░░░░░░░░ / ...
+Используй 10 сегментов; подбирай уровень заполнения под результат.`;
+
+const EN_GAUGE_LEGEND = `- 🟢 good: ██████████ / █████████░ / ████████░░ / ...
+- 🟡 needs improvement: ██████░░░░ / █████░░░░░ / ████░░░░░░ / ...
+- 🔴 poor: ███░░░░░░░ / ██░░░░░░░░ / █░░░░░░░░░ / ...
+Use 10 segments; choose the fill level to reflect the result.`;
+
 export function reportInstructions(language: AuditLanguage): string {
   if (language === "ru") {
     return `## Формат отчёта (СТРОГО)
 
-Ты ДОЛЖЕН вернуть отчёт, который СТРОГО следует приведённому ниже шаблону, секция за секцией, в указанном порядке. Заполни каждую секцию реальным содержимым на основе собранных через инструменты доказательств. Не пропускай секции. Если для секции нет данных, явно укажи «Не оценено» (Not assessed) вместо выдумывания.
+Этот шаблон ДИАГНОСТИЧЕСКОГО отчёта имеет приоритет над любым другим форматом отчётности, упомянутым в подключённом SEO-навыке (включая секции «Recommended roadmap», «Top 5 priorities», «Validation checklist», поля «Owner», «Recommended fix» как инструкции, временные рамки, спринты, бэклоги). Отчёт ДОЛЖЕН быть человекочитаемой диагностикой, а не задачником.
+
+Ты ДОЛЖЕН вернуть отчёт, который СТРОГО следует приведённому ниже шаблону, секция за секцией, в указанном порядке. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются только устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph и т.п.). Заполни каждую секцию реальным содержимым на основе собранных через инструменты доказательств. Не пропускай секции. Если для секции нет данных, явно укажи «Не оценено» или «Требует данных» и объясни почему — никогда не выдумывай факты.
 
 Правила заполнения:
-- Оцени Scorecard по 100-балльной модели. Если область не проверена — оставь Verified score = 0 и пометь Status как «Не оценено», не угадывай. Scores диагностические, не гарантии.
-- Каждая отдельная находка в секции Findings должна использовать блок «Expanded finding» ниже со всеми полями, включая Confidence (High/Medium/Low).
-- Выводы должны быть основаны только на реальных результатах инструментов и снабжены доказательствами.
-- Заголовки секций, метки приоритетов (P0–P3), Confidence и категории Scorecard оставляй как в шаблоне; описательный текст — на русском.
+- Скоркард оценивается по 100-балльной URL-only модели. Оценивай только области, которые можно проверить по публичному URL и доступным инструментам. Не добавляй штрафы за Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports или другие данные, которые текущий интерфейс не принимает. Если область из URL-only набора не проверена — оставь «Проверено» = 0 и пометь «Статус» как «Не оценено», не угадывай. Баллы диагностические, не прогноз позиций.
+- Таблица «Основные SEO-риски» — одна строка на риск. Колонки строго: Область, URL, Доказательство, Текущее состояние, Норма или ориентир, Значение для SEO, Серьёзность, Достоверность. ЗАПРЕЩЕНО добавлять колонки «Recommended fix», «Owner», «Timeline», «Sprint», «Priority P0–P3» в виде инструкций, владельцев или сроков — это диагностика, а не бэклог.
+- В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, mobile rendering, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.
+- В разделе «Диагностика Lighthouse / производительности» используй ТЕКСТОВЫЕ ШКАЛЫ, например «🟢 ██████████», «🟡 ██████░░░░», «🔴 ███░░░░░░░», для каждой метрики: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. Если метрика недоступна — «Не оценено» с причиной.
+- ЗАПРЕЩЕНО: roadmap, рекомендованные исправления с шагами внедрения, владельцы, сроки, спринты, бэклоги, чек-листы валидации как задачи. Отчёт диагностический, а не плановый.
+- Не выводи <think>, chain-of-thought, скрытые заметки или code fence. Только сам отчёт.
+
+### Ориентиры и нормативы (используй для сравнения с фактами):
+${RU_BENCHMARKS}
+
+### Текстовая шкала для метрик:
+${RU_GAUGE_LEGEND}
 
 ### Шаблон отчёта:
 \`\`\`md
-${REPORT_TEMPLATE}
-\`\`\`
-
-### Шаблон отдельной находки (Expanded finding):
-\`\`\`md
-${FINDING_TEMPLATE}
+${RU_REPORT_TEMPLATE}
 \`\`\``;
   }
 
   return `## Report format (STRICT)
 
-You MUST return a report that STRICTLY follows the template below, section by section, in the exact order shown. Fill every section with real content based on evidence collected via the tools. Do not skip sections. If you have no data for a section, explicitly mark it "Not assessed" rather than guessing.
+This DIAGNOSTIC report template takes priority over any other reporting format inside the attached SEO skill (including the "Required final report structure" and "Required finding format" sections of the skill, and any "Recommended roadmap", "Top 5 priorities", "Validation checklist", "Owner", "Recommended fix" used as fix instructions, timelines, sprints, or task backlogs). The report MUST be a human-readable SEO diagnostic, not a task backlog.
+
+You MUST return a report that STRICTLY follows the template below, section by section, in the exact order shown. Every visible heading, table header, status label, and Scorecard category label MUST be strictly in English (only established technical terms are allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph, and similar). Fill every section with real content based on evidence collected via the tools. Do not skip sections. If you have no data for a section, explicitly mark it "Not assessed" or "Requires data" and explain why — never invent facts.
 
 Filling rules:
-- Score the Scorecard using the 100-point model. If an area was not assessed, leave Verified score = 0 and set Status to "Not assessed" — never guess. Scores are diagnostic, not predictive.
-- Every individual finding in the Findings section must use the "Expanded finding" block below with all fields populated, including Confidence (High/Medium/Low).
-- Findings must be evidence-based, backed by real tool results.
-- Keep section headers, priority labels (P0–P3), Confidence values, and Scorecard categories exactly as in the template.
+- Score the Scorecard using the 100-point URL-only model. Assess only areas that can be checked from the public URL and available tools. Do not penalize for Search Console, uploaded reports, Ahrefs/Semrush/backlink exports, or other inputs that the current interface does not accept. If a URL-only area was not assessed, leave "Verified" = 0 and set "Status" to "Not assessed" — never guess. Scores are diagnostic, not predictive.
+- The "Main SEO risks" table is one row per risk. Columns are strictly: Area, URL, Evidence, Current state, Normal benchmark, SEO implication, Severity, Confidence. DO NOT add "Recommended fix", "Owner", "Timeline", "Sprint", or "Priority P0–P3" columns used as fix instructions, owners, or schedules — this is a diagnostic, not a backlog.
+- In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, mobile rendering, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.
+- In the "Lighthouse / performance diagnostics" section, use TEXTUAL GAUGES such as "🟢 ██████████", "🟡 ██████░░░░", "🔴 ███░░░░░░░" for each metric: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. If a metric is unavailable, mark "Not assessed" and state the reason.
+- DO NOT include: roadmap, recommended fixes with implementation steps, owners, timelines, sprints, backlogs, or validation checklists framed as tasks. The report is diagnostic, not a plan.
+- Do not output <think>, chain-of-thought, hidden notes, or code fences. Only the report.
+
+### Benchmark / reference values (use them to compare facts):
+${EN_BENCHMARKS}
+
+### Textual gauge legend:
+${EN_GAUGE_LEGEND}
 
 ### Report template:
 \`\`\`md
-${REPORT_TEMPLATE}
-\`\`\`
-
-### Expanded finding block:
-\`\`\`md
-${FINDING_TEMPLATE}
+${EN_REPORT_TEMPLATE}
 \`\`\``;
 }

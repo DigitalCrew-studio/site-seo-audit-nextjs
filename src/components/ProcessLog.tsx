@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 
@@ -14,11 +14,13 @@ export function ProcessLog() {
     }))
   );
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
 
   // Auto-scroll the log panel as new entries arrive.
   useEffect(() => {
+    if (!open) return;
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
+  }, [logs, open]);
 
   // Keep every log in the store; the UI filters debug-only entries based on
   // the live toggle so a flip during the run is reflected immediately.
@@ -32,42 +34,58 @@ export function ProcessLog() {
     [logs, debugMode]
   );
 
+  const latestLog = visibleLogs.at(-1);
+  const latestText = latestLog ? formatLogSummary(latestLog) : running ? "Starting..." : "No events";
+
   if (!running && logs.length === 0) return null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line-strong bg-[#0f0f0e]">
-      {/* Title bar */}
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/80" />
-        <span className="eyebrow ml-2 text-white/35">
+    <section className="border-y border-line py-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 text-left"
+      >
+        <span className="eyebrow shrink-0 text-faint">
           process — {running ? "live" : "ended"}
         </span>
         {running && (
-          <span className="flex items-center gap-2">
+          <span className="flex shrink-0 items-center gap-2">
             <span className="pulse-dot" />
-            <span className="eyebrow text-white/45">auditing</span>
+            <span className="eyebrow text-accent">auditing</span>
           </span>
         )}
+        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted">
+          {latestText}
+        </span>
+        <span className="eyebrow shrink-0 text-faint">
+          {visibleLogs.length} events · {open ? "hide" : "show"}
+        </span>
+      </button>
+
+      <div className="mt-2 flex justify-end">
         <button
           type="button"
-          onClick={() => setDebugMode(!debugMode)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setDebugMode(!debugMode);
+          }}
           aria-pressed={debugMode}
           title={
             debugMode
               ? "Hide debug events and tool completion details"
               : "Show debug events and tool completion details"
           }
-          className={`ml-auto inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
             debugMode
-              ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
-              : "border-white/15 text-white/55 hover:border-white/30 hover:text-white/80"
+              ? "border-positive/30 bg-positive/5 text-positive hover:bg-positive/10"
+              : "border-line text-muted hover:border-line-strong hover:text-ink"
           }`}
         >
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full transition ${
-              debugMode ? "bg-emerald-300" : "bg-white/40"
+              debugMode ? "bg-positive" : "bg-faint"
             }`}
           />
           debug
@@ -75,18 +93,18 @@ export function ProcessLog() {
       </div>
 
       {/* Body */}
-      <div className="terminal-scroll max-h-[22rem] space-y-1.5 overflow-y-auto px-4 py-4 font-mono text-[13px] leading-relaxed">
+      {open && <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-y-auto font-mono text-[13px] leading-relaxed">
         {visibleLogs.map((log, idx) => (
           <div key={idx} className="flex gap-3">
-            <span className="shrink-0 select-none text-white/25">{log.time}</span>
+            <span className="shrink-0 select-none text-faint">{log.time}</span>
             {log.type === "status" && (
-              <span className="text-white/70">{log.message}</span>
+              <span className="text-muted">{log.message}</span>
             )}
             {log.type === "tool" && (
               <span>
-                <span className="text-white/30">$</span>{" "}
-                <span className="text-emerald-300/90">{log.name}</span>
-                <span className="text-white/45">
+                <span className="text-faint">$</span>{" "}
+                <span className="text-positive">{log.name}</span>
+                <span className="text-muted">
                   (
                   {Object.entries(log.args)
                     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
@@ -96,28 +114,28 @@ export function ProcessLog() {
               </span>
             )}
             {log.type === "tool_end" && (
-              <span className="text-sky-300/90">
-                <span className="text-white/30">↳</span> {log.name}{" "}
+              <span className="text-ink-soft">
+                <span className="text-faint">↳</span> {log.name}{" "}
                 <span
                   className={
-                    log.ok ? "text-emerald-300/90" : "text-amber-300/90"
+                    log.ok ? "text-positive" : "text-accent"
                   }
                 >
                   {log.ok ? "ok" : "failed"}
                 </span>
-                <span className="text-white/45">
+                <span className="text-muted">
                   {" "}· {log.durationMs}ms · {log.bytes}B
                 </span>
                 {log.error && (
-                  <span className="text-amber-300/90"> — {log.error}</span>
+                  <span className="text-accent"> — {log.error}</span>
                 )}
               </span>
             )}
             {log.type === "debug" && (
-              <span className="text-sky-300/80">
-                <span className="text-white/30">·</span> {log.message}
+              <span className="text-ink-soft">
+                <span className="text-faint">·</span> {log.message}
                 {log.data && Object.keys(log.data).length > 0 && (
-                  <span className="text-white/35">
+                  <span className="text-muted">
                     {" "}(
                     {Object.entries(log.data)
                       .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
@@ -128,26 +146,43 @@ export function ProcessLog() {
               </span>
             )}
             {log.type === "tool_error" && (
-              <span className="text-amber-300">
-                <span className="text-white/30">!</span> {log.name} failed —{" "}
+              <span className="text-accent">
+                <span className="text-faint">!</span> {log.name} failed —{" "}
                 {log.error}
               </span>
             )}
             {log.type === "error" && (
-              <span className="text-red-300">
-                <span className="text-white/30">✕</span> {log.message}
+              <span className="text-red-700">
+                <span className="text-faint">✕</span> {log.message}
               </span>
             )}
           </div>
         ))}
         {running && (
-          <div className="flex items-center gap-2 text-white/35">
-            <span className="inline-block h-3.5 w-1.5 animate-pulse bg-white/40" />
+          <div className="flex items-center gap-2 text-faint">
+            <span className="inline-block h-3.5 w-1.5 animate-pulse bg-faint" />
             <span>waiting…</span>
           </div>
         )}
         <div ref={logsEndRef} />
-      </div>
+      </div>}
     </section>
   );
+}
+
+function formatLogSummary(log: ReturnType<typeof useAuditStore.getState>["logs"][number]): string {
+  switch (log.type) {
+    case "status":
+      return log.message;
+    case "tool":
+      return `$ ${log.name}`;
+    case "tool_end":
+      return `${log.name} ${log.ok ? "ok" : "failed"} · ${log.durationMs}ms`;
+    case "debug":
+      return `· ${log.message}`;
+    case "tool_error":
+      return `! ${log.name} failed — ${log.error}`;
+    case "error":
+      return `✕ ${log.message}`;
+  }
 }

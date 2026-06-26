@@ -36,6 +36,21 @@ export type SSEDebug = { message: string; data?: Record<string, unknown> };
 export type SSEReport = { report: string };
 export type SSEError = { message: string };
 
+export type SSEReportImage = {
+  id: string;
+  kind: "screenshot" | "social" | "schema";
+  source: string;
+  url: string;
+  pageUrl?: string;
+  alt?: string;
+  mimeType?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  status?: number;
+  takenAt: string;
+};
+
 /**
  * Emitted by the server when `take_screenshot` succeeds. The full base64
  * payload is included for the UI gallery; the model context deliberately
@@ -63,6 +78,8 @@ export type ScreenshotEntry = {
   bytes: number;
   takenAt: string;
 };
+
+export type ReportImageEntry = SSEReportImage;
 
 // ----- Client log entries (derived from SSE events) -----
 // Existing variants stay backward compatible. New `debug` and `tool_end`

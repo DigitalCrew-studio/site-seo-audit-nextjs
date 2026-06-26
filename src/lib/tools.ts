@@ -265,38 +265,6 @@ export const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "analyze_uploaded_audit_report",
-      description:
-        "Analyze pasted/imported SEO audit report text (not filesystem access) from Lighthouse, PageSpeed, Search Console, Screaming Frog, Semrush, Ahrefs, or similar exports. Returns compact evidence: detected format (json/csv/text/unknown), score samples, URL samples/count, extracted issue samples/count, severity counts when detectable, source tool hints, and warnings for empty/truncated/unparseable/no-issue inputs. Use only when the user/model has supplied report text in context.",
-      parameters: {
-        type: "object",
-        properties: {
-          reportText: { type: "string" },
-          sourceName: { type: "string" },
-        },
-        required: ["reportText"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "analyze_backlink_export",
-      description:
-        "Analyze pasted/imported backlink export text or CSV from Ahrefs, Semrush, Search Console, Majestic, Moz, or similar tools. Returns compact off-page evidence: detected format/tool hints, referring domain counts/samples, target URL samples, anchor text distribution samples, link attribute counts (follow/nofollow/sponsored/ugc), authority/toxic/spam score samples if present, status/lost link counts when detectable, suspicious patterns, and warnings. Use only when backlink export text has been supplied in context.",
-      parameters: {
-        type: "object",
-        properties: {
-          exportText: { type: "string" },
-          sourceName: { type: "string" },
-        },
-        required: ["exportText"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "batch_check_urls",
       description:
         "Check a batch of URLs for migration/launch QA without rendering JavaScript. Performs HEAD with GET fallback, follows redirects, and returns compact evidence: checked/truncated counts, status buckets, redirect samples, broken/error samples, final URL mismatch samples, content-type samples, and warnings. Use for submitted URL lists, redirects, sitemap samples, or migrated URLs.",

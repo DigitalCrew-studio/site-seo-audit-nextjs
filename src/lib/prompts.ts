@@ -14,8 +14,8 @@ export function normalizeUrl(input: string): string {
 /** Strict language instruction injected into the system prompt. */
 export function langInstruction(language: AuditLanguage): string {
   return language === "ru"
-    ? "Все твои ответы, включая итоговый отчёт, заголовки, таблицы и пункты рекомендаций, должны быть строго на русском языке."
-    : "All of your responses, including the final report, headings, tables, and recommendation items, must be strictly in English.";
+    ? "Все твои ответы должны быть строго на русском языке. Это касается всего итогового отчёта: заголовков секций, заголовков таблиц, меток статусов, меток скоркарда и категорий. Допускаются только устоявшиеся технические термины (canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph и т.п.)."
+    : "All of your responses must be strictly in English. This applies to the entire final report: section headings, table headers, status labels, scorecard category labels, and other visible UI text. Only established technical terms are allowed (canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph, etc.).";
 }
 
 /** Build the system message embedding the skill text as methodology. */
@@ -31,11 +31,24 @@ ${langInstruction(language)}
 
 You have access to browser tools. Only claim a finding if you have evidence from a tool result. If a check could not be performed, state the limitation clearly.
 
+This product is URL-only: the user supplies only a target URL. There is no Google Search Console connection, no file upload, no pasted third-party audit report, and no backlink export input in the current interface. Do not mention Search Console, uploaded reports, Ahrefs, Semrush, backlink exports, or missing user uploads as unassessed report areas, scorecard categories, or limitations. Do not penalize the audited site for those unavailable input modes.
+
 Use compact aggregate tools first. Prefer inspect_page_seo, crawl_site_sample, parse_sitemap, inspect_http, structured/social/hreflang/entity/security/performance tools over raw HTML or one-off primitive checks. Do not over-explore URL variants manually after crawl/sitemap evidence is available. Leave enough time for the final report; once core evidence is gathered, stop calling tools and write the report.
 
 Never output hidden reasoning, chain-of-thought, scratchpad text, <think> tags, or markdown code fences around the final report. The user-facing final answer must start directly with the report content.
 
-When you produce the FINAL report, you MUST follow the standardized report template exactly — see the report format rules below. Every audit must return the same structure, filled with your evidence-based content.
+## DIAGNOSTIC REPORT FORMAT (OVERRIDES THE SKILL)
+
+The app's diagnostic report format defined in this prompt SUPERSEDES any older reporting format inside the SEO skill — including the skill's "Required final report structure", the "Required finding format" with "Recommended fix / Owner / Validation method", the "Top 5 priorities", "Recommended roadmap", and "Validation checklist" sections, and any use of "Priority P0–P3" as a fix queue.
+
+Hard rules for the final report:
+- The report is a human-readable SEO DIAGNOSTIC, not a task backlog. State facts, compare current state with the normal benchmark, categorize severity/status, and provide a final conclusion. Do NOT include recommended fixes, owners, timelines, sprint planning, implementation steps, or "Priority P0–P3" used as a fix queue.
+- All visible section headings, table headers, status labels, severity labels, and scorecard category labels MUST be in the user-selected language. For Russian use labels such as «Проверено», «Частично», «Не оценено», «Требует данных», «Критично», «Высокая», «Средняя», «Низкая», «Инфо». For English use labels such as "Checked", "Partially checked", "Not assessed", "Requires data", "Critical", "High", "Medium", "Low", "Info". Only established technical terms (canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph, etc.) are allowed in their English form.
+- The report MUST include the localized Check coverage matrix / «Матрица охвата проверок» that lists every available URL-only audit area / tool group with the localized coverage statuses above. No URL-only audit area may be silently omitted.
+- The report MUST be table-heavy and compact: factual tables for scorecard, main SEO risks, check coverage matrix, evidence appendix, and textual gauges for Lighthouse / Core Web Vitals metrics.
+- Do NOT include a "Roadmap" / «Дорожная карта» section, a "Recommended fix" / «Рекомендация по исправлению» column, an "Owner" / «Ответственный» column, a "Timeline" / «Срок» column, or any implementation backlog.
+
+When you produce the FINAL report, you MUST follow the standardized diagnostic report template exactly — see the report format rules below. Every audit must return the same structure, filled with your evidence-based content.
 
 ${reportInstructions(language)}
 
@@ -52,9 +65,9 @@ export function buildUserPrompt(
 ): ChatCompletionMessageParam {
   return {
     role: "user",
-      content:
-        language === "ru"
-          ? `Проведи SEO-аудит для ${url}. Следуй методологии из навыка. Начни с главной страницы и ключевых шаблонов, используй предоставленные инструменты для сбора доказательств. Когда доказательств достаточно, верни ИТОГОВЫЙ отчёт строго по стандартизированному шаблону из системного промпта (все 16 секций + Scorecard + backlog + roadmap), заполненный собранным контентом. Ответ и отчёт должны быть полностью на русском языке.`
-          : `Run an SEO audit for ${url}. Follow the skill methodology. Start with the homepage and key templates, use the provided tools to collect evidence. Once you have enough evidence, return the FINAL report strictly following the standardized template from the system prompt (all 16 sections + Scorecard + backlog + roadmap), filled with your collected content. The response and report must be entirely in English.`,
+    content:
+      language === "ru"
+        ? `Проведи SEO-аудит для ${url}. Следуй методологии из навыка. Начни с главной страницы и ключевых шаблонов, используй предоставленные инструменты для сбора доказательств. Когда доказательств достаточно, верни ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ отчёт строго по шаблону из системного промпта, заполненный собранным контентом. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно заполни матрицу охвата проверок (Проверено / Частично / Не оценено / Требует данных) и используй текстовые шкалы для Lighthouse / Core Web Vitals. Не включай roadmap, рекомендованные исправления, владельцев, сроки и бэклог. Ответ и отчёт должны быть полностью на русском языке (кроме устоявшихся технических терминов).`
+        : `Run an SEO audit for ${url}. Follow the skill methodology. Start with the homepage and key templates, use the provided tools to collect evidence. Once you have enough evidence, return the FINAL DIAGNOSTIC report strictly following the template from the system prompt, filled with your collected content. Every visible heading, table header, status label, and scorecard category label must be in English. Make sure you fill the Check coverage matrix (Checked / Partially checked / Not assessed / Requires data) and use textual gauges for Lighthouse / Core Web Vitals. Do NOT include a roadmap, recommended fixes, owners, timelines, or implementation backlog. The response and report must be entirely in English (only established technical terms allowed).`,
   };
 }

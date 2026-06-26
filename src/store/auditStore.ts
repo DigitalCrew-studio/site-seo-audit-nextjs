@@ -5,12 +5,14 @@ import type {
   LogEntry,
   ModelInfo,
   OpenCodeGroup,
+  ReportImageEntry,
   ScreenshotEntry,
 } from "@/lib/types";
 
 const STORAGE_KEY = "opencode_api_key";
 const MAX_LOG_ENTRIES = 2000;
 const MAX_SCREENSHOTS = 20;
+const MAX_REPORT_IMAGES = 30;
 
 // Non-reactive runtime handles (kept outside React/store state).
 let abortController: AbortController | null = null;
@@ -33,6 +35,7 @@ type AuditState = {
   running: boolean;
   logs: LogEntry[];
   screenshots: ScreenshotEntry[];
+  reportImages: ReportImageEntry[];
   report: string;
   reportOpen: boolean;
   error: string;
@@ -67,6 +70,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
     running: false,
     logs: [],
     screenshots: [],
+    reportImages: [],
     report: "",
     reportOpen: false,
     error: "",
@@ -137,7 +141,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
         if (runId === id) fn();
       };
 
-      set({ running: true, report: "", reportOpen: false, error: "", logs: [], screenshots: [] });
+      set({ running: true, report: "", reportOpen: false, error: "", logs: [], screenshots: [], reportImages: [] });
       addLog({
         type: "status",
         message:
@@ -196,7 +200,31 @@ export const useAuditStore = create<AuditState>((set, get) => {
             setIfCurrent(() =>
               set((s) => ({
                 screenshots: [...s.screenshots, p].slice(-MAX_SCREENSHOTS),
+                reportImages: [
+                  ...s.reportImages,
+                  {
+                    id: p.id,
+                    kind: "screenshot",
+                    source: "screenshot",
+                    url: `data:${p.mimeType};base64,${p.base64}`,
+                    pageUrl: p.url,
+                    alt: p.url ?? "Screenshot",
+                    mimeType: p.mimeType,
+                    bytes: p.bytes,
+                    takenAt: p.takenAt,
+                  } satisfies ReportImageEntry,
+                ].slice(-MAX_REPORT_IMAGES),
               }))
+            ),
+          onReportImage: (p) =>
+            setIfCurrent(() =>
+              set((s) => {
+                const exists = s.reportImages.some(
+                  (image) => image.kind === p.kind && image.source === p.source && image.url === p.url
+                );
+                if (exists) return {};
+                return { reportImages: [...s.reportImages, p].slice(-MAX_REPORT_IMAGES) };
+              })
             ),
           onError: (p) => {
             setIfCurrent(() => set({ error: p.message }));

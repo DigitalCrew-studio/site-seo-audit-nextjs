@@ -120,3 +120,180 @@
   );
   background-size: 22px 22px;
 }
+
+/* ---------------------------------------------------------------------------
+   SEO diagnostic report: compact, table-friendly rendering.
+   These rules are intentionally written OUTSIDE any @layer so they win
+   over the Tailwind typography plugin's `.prose` defaults in cascade order.
+   --------------------------------------------------------------------------- */
+.audit-report {
+  color: var(--color-ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.audit-report h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.audit-report h2 {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-soft);
+  margin-top: 1.6rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.audit-report h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-top: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.audit-report h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.7rem;
+  margin-bottom: 0.2rem;
+}
+
+.audit-report p,
+.audit-report ul,
+.audit-report ol {
+  margin-top: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.audit-report ul > li,
+.audit-report ol > li {
+  margin-top: 0.1rem;
+  margin-bottom: 0.1rem;
+}
+
+.audit-report ul > li::marker {
+  color: var(--color-faint);
+}
+
+.audit-report strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.audit-report code {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  background: var(--color-line);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--color-ink-soft);
+}
+
+.audit-report pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  overflow-x: auto;
+}
+
+.audit-report hr {
+  margin: 1.25rem 0;
+  border: none;
+  border-top: 1px solid var(--color-line);
+}
+
+.audit-report table {
+  width: 100%;
+  font-size: 12.5px;
+  line-height: 1.45;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 0.4rem;
+  margin-bottom: 0.85rem;
+  table-layout: auto;
+}
+
+.audit-report thead {
+  background: var(--color-accent-soft);
+}
+
+.audit-report th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--color-line-strong);
+  white-space: nowrap;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+}
+
+.audit-report td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--color-line);
+  vertical-align: top;
+  color: var(--color-ink);
+}
+
+.audit-report tbody tr:nth-child(even) {
+  background: rgba(27, 27, 25, 0.025);
+}
+
+.audit-report tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.audit-report tbody tr:hover {
+  background: rgba(180, 83, 9, 0.05);
+}
+
+.audit-report td code {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* Horizontal scroll wrapper for wide tables, injected via the ReactMarkdown
+   `table` component override in ReportDialog.tsx. */
+.audit-report .audit-table-scroll {
+  overflow-x: auto;
+  margin-top: 0.4rem;
+  margin-bottom: 0.85rem;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.audit-report .audit-table-scroll > table {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  min-width: 100%;
+}
+
+.audit-report .audit-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.audit-report .audit-table-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-line-strong);
+  border-radius: 9999px;
+}
