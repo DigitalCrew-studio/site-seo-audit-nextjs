@@ -50,6 +50,7 @@ const MAX_INSPECT_HREFLANG_CALLS = 2;
 const MAX_RESOURCE_INVENTORY_CALLS = 2;
 const MAX_RUN_LIGHTHOUSE_CALLS = 2;
 const MAX_INSPECT_MOBILE_RENDERING_CALLS = 2;
+const MAX_INSPECT_RESPONSIVE_RENDERING_CALLS = 3;
 const MAX_INSPECT_ANALYTICS_TAGS_CALLS = 2;
 const MAX_CHECK_LINK_HEALTH_CALLS = 2;
 const MAX_CRAWL_SITE_SAMPLE_CALLS = 1;
@@ -95,6 +96,7 @@ const STATIC_SKIP_TOOLS = new Set([
   "extract_structured_data",
   "inspect_social_preview",
   "inspect_mobile_rendering",
+  "inspect_responsive_rendering",
   "inspect_analytics_tags",
   "crawl_site_sample",
   "inspect_entity_trust",
@@ -133,6 +135,7 @@ type ToolStats = {
   resource_inventory: number;
   run_lighthouse: number;
   inspect_mobile_rendering: number;
+  inspect_responsive_rendering: number;
   inspect_analytics_tags: number;
   check_link_health: number;
   crawl_site_sample: number;
@@ -166,6 +169,7 @@ function createToolStats(): ToolStats {
     resource_inventory: 0,
     run_lighthouse: 0,
     inspect_mobile_rendering: 0,
+    inspect_responsive_rendering: 0,
     inspect_analytics_tags: 0,
     check_link_health: 0,
     crawl_site_sample: 0,
@@ -410,6 +414,9 @@ function canRunTool(name: string, stats: ToolStats): { ok: boolean; reason?: str
   }
   if (name === "inspect_mobile_rendering" && stats.inspect_mobile_rendering >= MAX_INSPECT_MOBILE_RENDERING_CALLS) {
     return { ok: false, reason: `inspect_mobile_rendering budget exhausted (${stats.inspect_mobile_rendering}/${MAX_INSPECT_MOBILE_RENDERING_CALLS})` };
+  }
+  if (name === "inspect_responsive_rendering" && stats.inspect_responsive_rendering >= MAX_INSPECT_RESPONSIVE_RENDERING_CALLS) {
+    return { ok: false, reason: `inspect_responsive_rendering budget exhausted (${stats.inspect_responsive_rendering}/${MAX_INSPECT_RESPONSIVE_RENDERING_CALLS})` };
   }
   if (name === "inspect_analytics_tags" && stats.inspect_analytics_tags >= MAX_INSPECT_ANALYTICS_TAGS_CALLS) {
     return { ok: false, reason: `inspect_analytics_tags budget exhausted (${stats.inspect_analytics_tags}/${MAX_INSPECT_ANALYTICS_TAGS_CALLS})` };
@@ -1006,7 +1013,7 @@ function buildPreflightToolCalls(url: string): PreflightToolCall[] {
     { name: "crawl_site_sample", args: { url, maxPages: 10 } },
     { name: "extract_structured_data", args: { url, checkImages: false } },
     { name: "inspect_social_preview", args: { url, checkImages: true } },
-    { name: "inspect_mobile_rendering", args: { url, includeScreenshot: true } },
+    { name: "inspect_responsive_rendering", args: { url, profiles: ["desktop", "laptop", "tablet", "mobile"], includeScreenshots: true } },
     { name: "resource_inventory", args: { url } },
     { name: "inspect_entity_trust", args: { url } },
     { name: "dns_and_security_check", args: { url } },
@@ -1171,28 +1178,58 @@ function shapeToolResult(
     };
     omittedScreenshot = true;
   } else if (
-    name === "inspect_mobile_rendering" &&
+    (name === "inspect_mobile_rendering" || name === "inspect_responsive_rendering") &&
     result &&
     typeof result === "object" &&
     !Array.isArray(result)
   ) {
     const r = result as Record<string, unknown>;
-    const ss = r.screenshot;
-    if (ss && typeof ss === "object") {
-      const sso = ss as { base64?: unknown; mimeType?: unknown; bytes?: unknown };
+    const stripScreenshot = (entry: unknown) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+      const ss = entry as {
+        base64?: unknown;
+        mimeType?: unknown;
+        bytes?: unknown;
+        profile?: unknown;
+        viewport?: unknown;
+        source?: unknown;
+      };
       const bytes =
-        typeof sso.bytes === "number"
-          ? sso.bytes
-          : typeof sso.base64 === "string"
-            ? Buffer.byteLength(sso.base64, "base64")
+        typeof ss.bytes === "number"
+          ? ss.bytes
+          : typeof ss.base64 === "string"
+            ? Buffer.byteLength(ss.base64, "base64")
             : 0;
-      r.screenshot = {
-        mimeType: typeof sso.mimeType === "string" ? sso.mimeType : "image/jpeg",
+      const out: Record<string, unknown> = {
+        mimeType: typeof ss.mimeType === "string" ? ss.mimeType : "image/jpeg",
         bytes,
         omitted: true,
         reason: "screenshot omitted from model context; refer to debug log for size",
       };
-      omittedScreenshot = true;
+      if (typeof ss.profile === "string") out.profile = ss.profile;
+      if (ss.viewport && typeof ss.viewport === "object") out.viewport = ss.viewport;
+      if (typeof ss.source === "string") out.source = ss.source;
+      return out;
+    };
+    if (name === "inspect_responsive_rendering") {
+      const results = Array.isArray(r.results) ? r.results : [];
+      for (const item of results) {
+        if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+        const entry = item as Record<string, unknown>;
+        if (entry.screenshot) {
+          const replaced = stripScreenshot(entry.screenshot);
+          if (replaced) entry.screenshot = replaced;
+        }
+      }
+      if (results.length > 0) omittedScreenshot = true;
+    } else {
+      if (r.screenshot) {
+        const replaced = stripScreenshot(r.screenshot);
+        if (replaced) {
+          r.screenshot = replaced;
+          omittedScreenshot = true;
+        }
+      }
     }
   }
 
@@ -1345,6 +1382,20 @@ async function executeTool(
               ? args.includeScreenshot
               : undefined
           );
+        case "inspect_responsive_rendering":
+          return await browser.inspectResponsiveRendering(
+            String(args.url),
+            Array.isArray(args.profiles)
+              ? (args.profiles.filter(
+                  (p): p is "desktop" | "laptop" | "tablet" | "mobile" =>
+                    typeof p === "string" &&
+                    ["desktop", "laptop", "tablet", "mobile"].includes(p)
+                ) as Array<"desktop" | "laptop" | "tablet" | "mobile">)
+              : undefined,
+            typeof args.includeScreenshots === "boolean"
+              ? args.includeScreenshots
+              : undefined
+          );
         case "inspect_analytics_tags":
           return await browser.inspectAnalyticsTags(String(args.url));
         case "check_link_health":
@@ -1462,6 +1513,65 @@ async function executeTool(
           base64,
           bytes,
           takenAt: new Date().toISOString(),
+        });
+      }
+    } else if (
+      name === "inspect_responsive_rendering" &&
+      result &&
+      typeof result === "object" &&
+      !Array.isArray(result)
+    ) {
+      const r = result as { results?: unknown };
+      const results = Array.isArray(r.results) ? r.results : [];
+      for (const rawEntry of results) {
+        if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) continue;
+        const entry = rawEntry as {
+          screenshot?: {
+            base64?: unknown;
+            mimeType?: unknown;
+            bytes?: unknown;
+            profile?: unknown;
+            viewport?: unknown;
+            source?: unknown;
+          };
+          finalUrl?: unknown;
+          url?: unknown;
+        };
+        const ss = entry.screenshot;
+        if (!ss || typeof ss !== "object" || typeof ss.base64 !== "string" || ss.base64.length === 0) continue;
+        const base64 = ss.base64;
+        const mimeType = typeof ss.mimeType === "string" ? ss.mimeType : "image/jpeg";
+        const bytes =
+          typeof ss.bytes === "number"
+            ? ss.bytes
+            : Buffer.byteLength(base64, "base64");
+        const toolUrl = args.url;
+        const screenshotUrl =
+          typeof entry.finalUrl === "string" && entry.finalUrl.length > 0
+            ? entry.finalUrl
+            : typeof entry.url === "string" && entry.url.length > 0
+              ? entry.url
+              : typeof toolUrl === "string" && toolUrl.length > 0
+                ? toolUrl
+                : undefined;
+        const profile =
+          typeof ss.profile === "string" &&
+          ["desktop", "laptop", "tablet", "mobile"].includes(ss.profile)
+            ? (ss.profile as "desktop" | "laptop" | "tablet" | "mobile")
+            : undefined;
+        emit("screenshot", {
+          id: randomUUID(),
+          url: screenshotUrl,
+          mimeType,
+          base64,
+          bytes,
+          takenAt: new Date().toISOString(),
+          source: typeof ss.source === "string" ? ss.source : "inspectResponsiveRendering",
+          profile,
+          viewport:
+            ss.viewport && typeof ss.viewport === "object" && !Array.isArray(ss.viewport)
+              ? (ss.viewport as { width?: number; height?: number })
+              : undefined,
         });
       }
     } else if (name === "inspect_social_preview") {

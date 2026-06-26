@@ -310,6 +310,28 @@ export class BrowserSession {
   }
 
   /**
+   * Aggregate responsive rendering check: renders the same URL across a
+   * sequence of viewport profiles (desktop, laptop, tablet, mobile by
+   * default) and returns compact per-profile evidence plus a cross-profile
+   * summary. Each profile uses its own temporary BrowserContext so the main
+   * audit page is never disturbed; contexts are always closed, even on
+   * error. When `includeScreenshots` is true, one JPEG per profile is
+   * streamed to the client and omitted from model context.
+   */
+  async inspectResponsiveRendering(
+    url: string,
+    profiles?: Array<"desktop" | "laptop" | "tablet" | "mobile">,
+    includeScreenshots?: boolean
+  ): Promise<Record<string, unknown>> {
+    return mobileTools.inspectResponsiveRendering(
+      this.toolContext(),
+      url,
+      profiles,
+      includeScreenshots
+    );
+  }
+
+  /**
    * Run a Lighthouse lab audit using a fresh headless Chrome instance and
    * return a compact, model-friendly summary. Uses dynamic imports so the
    * `lighthouse` and `chrome-launcher` packages are only loaded if this tool

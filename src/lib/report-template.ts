@@ -20,7 +20,7 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 | inspect_hreflang | ... | ... |
 | resource_inventory | ... | ... |
 | run_lighthouse | ... | ... |
-| inspect_mobile_rendering | ... | ... |
+| inspect_responsive_rendering | ... | ... |
 | inspect_analytics_tags | ... | ... |
 | check_link_health | ... | ... |
 | inspect_llms_txt | ... | ... |
@@ -37,7 +37,7 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 | JS-рендеринг и сырой HTML | /10 |  |  |
 | Структурированные данные | /10 |  |  |
 | Внутренние ссылки и краулинг | /10 |  |  |
-| Производительность и мобильная пригодность | /15 |  |  |
+| Производительность и адаптивность интерфейса | /15 |  |  |
 | Локальность / сущность / соцсети | /5 |  |  |
 | Аналитика и маркетинговая готовность | /5 |  |  |
 | **Общий итог** | **/100** |  |  |
@@ -64,6 +64,15 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 - Best Practices: <цвет и шкала> — <значение, норма>
 - SEO: <цвет и шкала> — <значение, норма>
 (Если какой-то из прогонов Mobile/Desktop Lighthouse не выполнен — явно указать «Не оценено», указать, какая именно конфигурация не запустилась (formFactor: mobile / desktop, configPreset: desktopConfig / fallbackDesktop / defaultMobile), и привести текст ошибки инструмента.)
+
+## Рендеринг по устройствам
+| Профиль | Viewport | Overflow | H1 above fold | Primary nav | Small text | Tap issues | Screenshot |
+|---|---:|---|---|---|---:|---:|---|
+| Desktop | 1440×900 | да/нет, <px>px | да/нет | виден/не виден | <count> | <count> | да/нет |
+| Laptop | 1366×768 | ... | ... | ... | ... | ... | ... |
+| Tablet | 768×1024 | ... | ... | ... | ... | ... | ... |
+| Mobile | 390×844 | ... | ... | ... | ... | ... | ... |
+(Одна строка на каждый из профилей, проверенных inspect_responsive_rendering; если профилей было меньше — пометить отсутствующие как «Не оценено». Small text — число элементов с font-size < 12px; Tap issues — число интерактивных элементов < 48×48 CSS px. Screenshot — есть ли JPEG, сохранённый в галерее отчёта. Overflow и H1 above fold показывают, как страница ведёт себя в данном viewport.)
 
 ## Анализ по категориям
 <Свободный диагностический текст по каждой ключевой области, объединяющий факты. Только наблюдения, без рекомендаций и плана действий.>
@@ -109,7 +118,7 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 | inspect_hreflang | ... | ... |
 | resource_inventory | ... | ... |
 | run_lighthouse | ... | ... |
-| inspect_mobile_rendering | ... | ... |
+| inspect_responsive_rendering | ... | ... |
 | inspect_analytics_tags | ... | ... |
 | check_link_health | ... | ... |
 | inspect_llms_txt | ... | ... |
@@ -126,7 +135,7 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 | JS rendering and raw HTML | /10 |  |  |
 | Structured data | /10 |  |  |
 | Internal links and crawl hygiene | /10 |  |  |
-| Performance and mobile usability | /15 |  |  |
+| Performance and interface adaptability | /15 |  |  |
 | Local / entity / social | /5 |  |  |
 | Analytics and marketing readiness | /5 |  |  |
 | **Overall** | **/100** |  |  |
@@ -153,6 +162,15 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 - Best Practices: <color and gauge> — <value, benchmark>
 - SEO: <color and gauge> — <value, benchmark>
 (If a Mobile or Desktop Lighthouse run did not complete, explicitly mark "Not assessed", state which configuration failed (formFactor: mobile / desktop, configPreset: desktopConfig / fallbackDesktop / defaultMobile), and quote the tool's actual error message — do not label it simply as "not assessed".)
+
+## Rendering by device
+| Profile | Viewport | Overflow | H1 above fold | Primary nav | Small text | Tap issues | Screenshot |
+|---|---:|---|---|---|---:|---:|---|
+| Desktop | 1440×900 | yes/no, <px>px | yes/no | visible/missing | <count> | <count> | yes/no |
+| Laptop | 1366×768 | ... | ... | ... | ... | ... | ... |
+| Tablet | 768×1024 | ... | ... | ... | ... | ... | ... |
+| Mobile | 390×844 | ... | ... | ... | ... | ... | ... |
+(One row per profile checked by inspect_responsive_rendering; if some profiles were not requested, mark them "Not assessed". Small text = number of elements with font-size < 12px; Tap issues = number of interactive controls smaller than 48×48 CSS px. Screenshot = whether a JPEG was captured and stored in the report gallery. Overflow and H1 above fold show how the page behaves in that specific viewport.)
 
 ## Category analysis
 <Free-form diagnostic narrative per key area, summarising facts. Observations only, no recommendations or action plan.>
@@ -231,7 +249,7 @@ export function reportInstructions(language: AuditLanguage): string {
 Правила заполнения:
 - Скоркард оценивается по 100-балльной URL-only модели. Оценивай только области, которые можно проверить по публичному URL и доступным инструментам. Не добавляй штрафы за Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports или другие данные, которые текущий интерфейс не принимает. Если область из URL-only набора не проверена — оставь «Проверено» = 0 и пометь «Статус» как «Не оценено», не угадывай. Баллы диагностические, не прогноз позиций.
 - Таблица «Основные SEO-риски» — одна строка на риск. Колонки строго: Область, URL, Доказательство, Текущее состояние, Норма или ориентир, Значение для SEO, Серьёзность, Достоверность. ЗАПРЕЩЕНО добавлять колонки «Recommended fix», «Owner», «Timeline», «Sprint», «Priority P0–P3» в виде инструкций, владельцев или сроков — это диагностика, а не бэклог.
-- В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, mobile rendering, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.
+- В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering по desktop/laptop/tablet/mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.
 - В разделе «Диагностика Lighthouse / производительности» используй ТЕКСТОВЫЕ ШКАЛЫ, например «🟢 ██████████», «🟡 ██████░░░░», «🔴 ███░░░░░░░», для каждой метрики: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. Если метрика недоступна — «Не оценено» с причиной.
 - ЗАПРЕЩЕНО: roadmap, рекомендованные исправления с шагами внедрения, владельцы, сроки, спринты, бэклоги, чек-листы валидации как задачи. Отчёт диагностический, а не плановый.
 - Не выводи <think>, chain-of-thought, скрытые заметки или code fence. Только сам отчёт.
@@ -257,7 +275,7 @@ You MUST return a report that STRICTLY follows the template below, section by se
 Filling rules:
 - Score the Scorecard using the 100-point URL-only model. Assess only areas that can be checked from the public URL and available tools. Do not penalize for Search Console, uploaded reports, Ahrefs/Semrush/backlink exports, or other inputs that the current interface does not accept. If a URL-only area was not assessed, leave "Verified" = 0 and set "Status" to "Not assessed" — never guess. Scores are diagnostic, not predictive.
 - The "Main SEO risks" table is one row per risk. Columns are strictly: Area, URL, Evidence, Current state, Normal benchmark, SEO implication, Severity, Confidence. DO NOT add "Recommended fix", "Owner", "Timeline", "Sprint", or "Priority P0–P3" columns used as fix instructions, owners, or schedules — this is a diagnostic, not a backlog.
-- In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, mobile rendering, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.
+- In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering across desktop / laptop / tablet / mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.
 - In the "Lighthouse / performance diagnostics" section, use TEXTUAL GAUGES such as "🟢 ██████████", "🟡 ██████░░░░", "🔴 ███░░░░░░░" for each metric: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. If a metric is unavailable, mark "Not assessed" and state the reason.
 - DO NOT include: roadmap, recommended fixes with implementation steps, owners, timelines, sprints, backlogs, or validation checklists framed as tasks. The report is diagnostic, not a plan.
 - Do not output <think>, chain-of-thought, hidden notes, or code fences. Only the report.

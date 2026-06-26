@@ -46,9 +46,9 @@ const CAPABILITIES: Capability[] = [
     icon: Camera,
   },
   {
-    title: "Lighthouse и мобильная пригодность",
+    title: "Lighthouse и адаптивность интерфейса",
     description:
-      "Запускаем Lighthouse и отдельные проверки mobile rendering: Core Web Vitals, viewport, touch-targets и адаптивность в реальных условиях.",
+      "Запускаем Lighthouse для mobile и desktop, а также отдельные проверки responsive rendering на desktop / laptop / tablet / mobile: Core Web Vitals, viewport, overflow, touch-targets и адаптивность в реальных условиях.",
     icon: Activity,
   },
   {

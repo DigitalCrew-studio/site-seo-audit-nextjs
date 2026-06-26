@@ -210,7 +210,7 @@ export const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "inspect_mobile_rendering",
       description:
-        "Load a URL in a temporary mobile-emulated Chromium context (default 390x844 viewport, deviceScaleFactor 2, isMobile, hasTouch, iPhone-style user agent) and return a compact bundle of mobile-friendliness evidence from a single render. Returns url/finalUrl/status/responseTime/viewport, viewport meta content, horizontalOverflow boolean with overflowAmountPx, documentElement/body/clientWidths, contentHeight, readableFontIssues sample (text elements with computed font-size < 12px, capped), tapTargetIssues sample (interactive controls smaller than 48x48 CSS px, capped), h1 sample and h1AboveFold boolean, primaryNavVisible guess, firstScreenText sample (visible text intersecting the first viewport), aboveFoldLinks count, and issues/warnings (missingViewportMeta, horizontalOverflow, smallReadableFonts, smallTapTargets, h1NotAboveFold, primaryNavMissing). When includeScreenshot is true, also captures a JPEG screenshot which is streamed to the client and omitted from model context.",
+        "Load a URL in a temporary mobile-emulated Chromium context (default 390x844 viewport, deviceScaleFactor 2, isMobile, hasTouch, iPhone-style user agent) and return a compact bundle of mobile-friendliness evidence from a single render. Returns url/finalUrl/status/responseTime/viewport, viewport meta content, horizontalOverflow boolean with overflowAmountPx, documentElement/body/clientWidths, contentHeight, readableFontIssues sample (text elements with computed font-size < 12px, capped), tapTargetIssues sample (interactive controls smaller than 48x48 CSS px, capped), h1 sample and h1AboveFold boolean, primaryNavVisible guess, firstScreenText sample (visible text intersecting the first viewport), aboveFoldLinks count, and issues/warnings (missingViewportMeta, horizontalOverflow, smallReadableFonts, smallTapTargets, h1NotAboveFold, primaryNavMissing). When includeScreenshot is true, also captures a JPEG screenshot which is streamed to the client and omitted from model context. Kept for compatibility — prefer inspect_responsive_rendering for full cross-device coverage.",
       parameters: {
         type: "object",
         properties: {
@@ -218,6 +218,35 @@ export const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           width: { type: "number", description: "Optional mobile viewport width override in CSS px (default 390)." },
           height: { type: "number", description: "Optional mobile viewport height override in CSS px (default 844)." },
           includeScreenshot: { type: "boolean", description: "If true, also capture a mobile screenshot and stream it to the client (omitted from model context)." },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "inspect_responsive_rendering",
+      description:
+        "Render a URL in a sequence of viewport profiles (default: desktop 1440x900, laptop 1366x768, tablet 768x1024, mobile 390x844 — each with its own user agent, deviceScaleFactor, isMobile and hasTouch) and return a compact per-profile bundle plus a cross-profile summary. For each profile: status/finalUrl/responseTime/viewport/userAgent, viewport meta content, horizontalOverflow boolean with overflowAmountPx, documentElement/body clientWidths, contentHeight, readableFontIssues sample (text elements with computed font-size < 12px, capped), tapTargetIssues sample (interactive controls smaller than 48x48 CSS px, capped), h1 sample + h1AboveFold, primaryNavVisible guess, firstScreenText sample, aboveFoldLinks count, and per-profile issues/warnings. Returns a summary with profilesWithOverflow, profilesWithSmallText, profilesWithTapIssues, profilesWithH1BelowFold, profilesWithoutPrimaryNav. When includeScreenshots is true, captures one JPEG per profile; screenshots are streamed to the client and omitted from model context. Use this to assess how a single page adapts across desktop, laptop, tablet and mobile in a single tool call.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          profiles: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["desktop", "laptop", "tablet", "mobile"],
+            },
+            description:
+              "Optional subset of viewport profiles to render, in the given order. Defaults to all four (desktop, laptop, tablet, mobile).",
+          },
+          includeScreenshots: {
+            type: "boolean",
+            description:
+              "If true, capture a JPEG screenshot per profile and stream it to the client (omitted from model context).",
+          },
         },
         required: ["url"],
       },

@@ -1,41 +1,111 @@
 import type { BrowserToolContext } from "../types";
 
+export type ViewportProfile = "desktop" | "laptop" | "tablet" | "mobile";
+
+export type ViewportProfileConfig = {
+  profile: ViewportProfile;
+  width: number;
+  height: number;
+  deviceScaleFactor: number;
+  isMobile: boolean;
+  hasTouch: boolean;
+  userAgent: string;
+};
+
+export const DEFAULT_VIEWPORT_PROFILES: ViewportProfileConfig[] = [
+  {
+    profile: "desktop",
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: false,
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  },
+  {
+    profile: "laptop",
+    width: 1366,
+    height: 768,
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: false,
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  },
+  {
+    profile: "tablet",
+    width: 768,
+    height: 1024,
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    userAgent:
+      "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+  },
+  {
+    profile: "mobile",
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+  },
+];
+
+const MAX_FONT_SAMPLES = 10;
+const MAX_TAP_SAMPLES = 10;
+const MAX_ITERATE = 2000;
+const MAX_FIRST_SCREEN_CHARS = 600;
+const MIN_FONT_PX = 12;
+const MIN_TAP_PX = 48;
+
+const LEGACY_MOBILE_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
+
+function findProfile(name: string): ViewportProfileConfig | undefined {
+  return DEFAULT_VIEWPORT_PROFILES.find((p) => p.profile === name);
+}
+
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Math.floor(Number(value) || fallback);
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeProfiles(profiles: unknown): ViewportProfileConfig[] {
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    return DEFAULT_VIEWPORT_PROFILES;
+  }
+  const seen = new Set<ViewportProfile>();
+  const out: ViewportProfileConfig[] = [];
+  for (const raw of profiles) {
+    if (typeof raw !== "string") continue;
+    const cfg = findProfile(raw);
+    if (!cfg || seen.has(cfg.profile)) continue;
+    seen.add(cfg.profile);
+    out.push(cfg);
+  }
+  return out.length > 0 ? out : DEFAULT_VIEWPORT_PROFILES;
+}
+
 /**
- * Render a URL in a temporary mobile-emulated browser context and gather
- * compact mobile-friendliness evidence in a single pass. Uses a separate
- * BrowserContext with a mobile viewport + user agent so the main audit
- * page state is never disturbed. The temporary context is always closed,
- * even on error.
+ * Render a URL in a temporary browser context with the given viewport profile
+ * and gather compact layout evidence in a single pass. Uses a separate
+ * BrowserContext so the main audit page state is never disturbed. The
+ * temporary context is always closed, even on error.
  */
-export async function inspectMobileRendering(
+export async function inspectViewportRendering(
   ctx: BrowserToolContext,
   url: string,
-  width?: number,
-  height?: number,
-  includeScreenshot?: boolean
+  profileConfig: ViewportProfileConfig,
+  includeScreenshot: boolean
 ): Promise<Record<string, unknown>> {
-  const MAX_WIDTH = 2000;
-  const MAX_HEIGHT = 4000;
-  const MIN_WIDTH = 240;
-  const MIN_HEIGHT = 320;
-  const MAX_FONT_SAMPLES = 10;
-  const MAX_TAP_SAMPLES = 10;
-  const MAX_ITERATE = 2000;
-  const MAX_FIRST_SCREEN_CHARS = 600;
-  const MIN_FONT_PX = 12;
-  const MIN_TAP_PX = 48;
-
-  const mobileUA =
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
-
-  const w = Math.max(
-    MIN_WIDTH,
-    Math.min(MAX_WIDTH, Math.floor(Number(width) || 390))
-  );
-  const h = Math.max(
-    MIN_HEIGHT,
-    Math.min(MAX_HEIGHT, Math.floor(Number(height) || 844))
-  );
+  const profile = profileConfig.profile;
+  const w = profileConfig.width;
+  const h = profileConfig.height;
+  const ua = profileConfig.userAgent;
   const wantScreenshot = Boolean(includeScreenshot);
 
   if (!ctx.getBrowser) {
@@ -43,23 +113,30 @@ export async function inspectMobileRendering(
   }
   const browser = ctx.getBrowser();
 
-  ctx.log?.("status", `Inspecting mobile rendering for ${url} (${w}x${h})...`);
-  ctx.log?.("debug", "Mobile render context start", {
+  ctx.log?.(
+    "status",
+    `Inspecting viewport rendering (${profile} ${w}x${h}) for ${url}...`
+  );
+  ctx.log?.("debug", "Viewport render context start", {
+    profile,
     url,
     width: w,
     height: h,
+    isMobile: profileConfig.isMobile,
+    hasTouch: profileConfig.hasTouch,
+    deviceScaleFactor: profileConfig.deviceScaleFactor,
     includeScreenshot: wantScreenshot,
   });
 
-  const mobileContext = await browser.newContext({
+  const profileContext = await browser.newContext({
     viewport: { width: w, height: h },
-    deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
-    userAgent: mobileUA,
+    deviceScaleFactor: profileConfig.deviceScaleFactor,
+    isMobile: profileConfig.isMobile,
+    hasTouch: profileConfig.hasTouch,
+    userAgent: ua,
   });
-  const mobilePage = await mobileContext.newPage();
-  mobilePage.setDefaultTimeout(15000);
+  const profilePage = await profileContext.newPage();
+  profilePage.setDefaultTimeout(15000);
 
   let responseTime = 0;
   let status = 0;
@@ -74,24 +151,24 @@ export async function inspectMobileRendering(
     const start = Date.now();
     let response: import("playwright").Response | null = null;
     try {
-      response = await mobilePage.goto(url, {
+      response = await profilePage.goto(url, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
     } catch (navErr) {
       navigationError = navErr instanceof Error ? navErr.message : String(navErr);
-      ctx.log?.("debug", "Mobile goto failed", { error: navigationError });
+      ctx.log?.("debug", `Viewport ${profile} goto failed`, { error: navigationError });
     }
     responseTime = Date.now() - start;
     status = response?.status() ?? 0;
-    finalUrl = mobilePage.url();
+    finalUrl = profilePage.url();
 
-    await mobilePage
+    await profilePage
       .waitForLoadState("load", { timeout: 5000 })
       .catch(() => {});
 
     try {
-      evaluateData = (await mobilePage.evaluate(
+      evaluateData = (await profilePage.evaluate(
         (args: {
           MAX_FONT_SAMPLES: number;
           MAX_TAP_SAMPLES: number;
@@ -333,12 +410,12 @@ export async function inspectMobileRendering(
     } catch (evErr) {
       evaluateError =
         evErr instanceof Error ? evErr.message : String(evErr);
-      ctx.log?.("debug", "Mobile evaluate failed", { error: evaluateError });
+      ctx.log?.("debug", `Viewport ${profile} evaluate failed`, { error: evaluateError });
     }
 
     if (wantScreenshot && !navigationError && !evaluateError) {
       try {
-        screenshotBuffer = await mobilePage.screenshot({
+        screenshotBuffer = await profilePage.screenshot({
           type: "jpeg",
           quality: 70,
           fullPage: false,
@@ -346,13 +423,13 @@ export async function inspectMobileRendering(
       } catch (ssErr) {
         screenshotError =
           ssErr instanceof Error ? ssErr.message : String(ssErr);
-        ctx.log?.("debug", "Mobile screenshot failed", {
+        ctx.log?.("debug", `Viewport ${profile} screenshot failed`, {
           error: screenshotError,
         });
       }
     }
   } finally {
-    await mobileContext.close().catch(() => {});
+    await profileContext.close().catch(() => {});
   }
 
   const issues: string[] = [];
@@ -364,10 +441,19 @@ export async function inspectMobileRendering(
       issues.push("evaluationFailed");
     }
   } else {
-    if (!evaluateData.viewportContent) issues.push("missingViewportMeta");
+    if (!evaluateData.viewportContent && profileConfig.isMobile) {
+      issues.push("missingViewportMeta");
+    }
     if (evaluateData.horizontalOverflow) issues.push("horizontalOverflow");
     const fic = Number(evaluateData.fontIssueCount) || 0;
     if (fic > 0) warnings.push("smallReadableFonts");
+    // Tap-target semantics: kept identical to the legacy mobile renderer
+    // (>=48x48 CSS px). On desktop/laptop we still surface small controls
+    // as a warning so the report can call them out, but the threshold is
+    // intentionally the same; the model is expected to read the profile
+    // field and weight the result for desktop interactions (mouse hover /
+    // larger cursors). Adjust here only if a stricter desktop minimum
+    // (e.g. 24x24) is desired.
     const tic = Number(evaluateData.tapIssueCount) || 0;
     if (tic > 0) warnings.push("smallTapTargets");
     const h1Text = String(evaluateData.h1Text || "");
@@ -376,12 +462,13 @@ export async function inspectMobileRendering(
   }
 
   const result: Record<string, unknown> = {
+    profile,
     url,
     finalUrl,
     status,
     responseTime,
     viewport: { width: w, height: h },
-    userAgent: mobileUA,
+    userAgent: ua,
     viewportMeta: evaluateData ? evaluateData.viewportContent : "",
     horizontalOverflow: Boolean(evaluateData?.horizontalOverflow),
     overflowAmount: Number(evaluateData?.overflowAmount) || 0,
@@ -425,6 +512,9 @@ export async function inspectMobileRendering(
         mimeType: "image/jpeg",
         bytes: screenshotBuffer.byteLength,
         omitted: true,
+        profile,
+        viewport: { width: w, height: h },
+        source: "inspectResponsiveRendering",
       };
     } else if (screenshotError) {
       result.screenshotError = screenshotError;
@@ -435,7 +525,7 @@ export async function inspectMobileRendering(
     }
   }
 
-  ctx.log?.("debug", "Mobile render inspection finished", {
+  ctx.log?.("debug", `Viewport ${profile} render inspection finished`, {
     url: finalUrl,
     status,
     overflow: Number(evaluateData?.overflowAmount) || 0,
@@ -445,4 +535,144 @@ export async function inspectMobileRendering(
   });
 
   return result;
+}
+
+/**
+ * Legacy single-profile mobile renderer. Kept for backward compatibility with
+ * the `inspect_mobile_rendering` tool — it is now a thin wrapper around
+ * `inspectViewportRendering` with the mobile profile at 390x844.
+ */
+export async function inspectMobileRendering(
+  ctx: BrowserToolContext,
+  url: string,
+  width?: number,
+  height?: number,
+  includeScreenshot?: boolean
+): Promise<Record<string, unknown>> {
+  const w = clampInt(width, 390, 240, 2000);
+  const h = clampInt(height, 844, 320, 4000);
+  const profile: ViewportProfileConfig = {
+    ...(findProfile("mobile") as ViewportProfileConfig),
+    width: w,
+    height: h,
+    userAgent: LEGACY_MOBILE_UA,
+  };
+  return inspectViewportRendering(ctx, url, profile, Boolean(includeScreenshot));
+}
+
+/**
+ * Aggregate tool: render the same URL in a sequence of viewport profiles
+ * (desktop, laptop, tablet, mobile by default) and return a compact summary
+ * of each profile's evidence plus cross-profile issue counts. Each profile
+ * gets its own temporary BrowserContext that is always closed, even on error.
+ * Screenshots are captured per profile when `includeScreenshots` is true;
+ * they are streamed to the client and omitted from model context.
+ */
+export async function inspectResponsiveRendering(
+  ctx: BrowserToolContext,
+  url: string,
+  profiles?: ViewportProfile[],
+  includeScreenshots?: boolean
+): Promise<Record<string, unknown>> {
+  const selected = normalizeProfiles(profiles);
+  const wantScreenshots = Boolean(includeScreenshots);
+
+  ctx.log?.(
+    "status",
+    `Inspecting responsive rendering for ${url} (${selected.length} profile${selected.length === 1 ? "" : "s"}: ${selected
+      .map((p) => p.profile)
+      .join(", ")})...`
+  );
+
+  const results: Array<Record<string, unknown>> = [];
+  for (const profile of selected) {
+    ctx.log?.(
+      "status",
+      `Rendering ${profile.profile} ${profile.width}x${profile.height} for ${url}...`
+    );
+    let entry: Record<string, unknown>;
+    try {
+      entry = await inspectViewportRendering(ctx, url, profile, wantScreenshots);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ctx.log?.("debug", `Responsive ${profile.profile} render crashed`, {
+        error: msg,
+      });
+      entry = {
+        profile: profile.profile,
+        url,
+        finalUrl: "",
+        status: 0,
+        responseTime: 0,
+        viewport: { width: profile.width, height: profile.height },
+        userAgent: profile.userAgent,
+        viewportMeta: "",
+        horizontalOverflow: false,
+        overflowAmount: 0,
+        docWidth: 0,
+        bodyWidth: 0,
+        contentHeight: 0,
+        fontIssueCount: 0,
+        fontIssues: [],
+        tapIssueCount: 0,
+        tapIssues: [],
+        h1: { text: "", visible: false, aboveFold: false },
+        primaryNav: { visible: false, tag: "" },
+        firstScreenText: "",
+        aboveFoldLinks: 0,
+        issues: ["renderFailed"],
+        warnings: [],
+        renderError: msg,
+      };
+    }
+    results.push(entry);
+    ctx.log?.(
+      "debug",
+      `Responsive ${profile.profile} render done`,
+      {
+        status: entry.status,
+        overflow: entry.overflowAmount,
+        fontIssues: entry.fontIssueCount,
+        tapIssues: entry.tapIssueCount,
+        screenshot: entry.screenshot ? (entry.screenshot as { bytes?: number }).bytes ?? 0 : 0,
+      }
+    );
+  }
+
+  const summary = {
+    profilesWithOverflow: results.filter((r) => r.horizontalOverflow).length,
+    profilesWithSmallText: results.filter((r) => Number(r.fontIssueCount) > 0).length,
+    profilesWithTapIssues: results.filter((r) => Number(r.tapIssueCount) > 0).length,
+    profilesWithH1BelowFold: results.filter(
+      (r) =>
+        typeof (r.h1 as { text?: string } | undefined)?.text === "string" &&
+        (r.h1 as { text: string }).text.length > 0 &&
+        !(r.h1 as { aboveFold?: boolean }).aboveFold
+    ).length,
+    profilesWithoutPrimaryNav: results.filter(
+      (r) => !(r.primaryNav as { visible?: boolean })?.visible
+    ).length,
+  };
+
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  for (const r of results) {
+    for (const i of (Array.isArray(r.issues) ? r.issues : []) as string[]) {
+      if (typeof i === "string" && !issues.includes(i)) issues.push(i);
+    }
+    for (const w of (Array.isArray(r.warnings) ? r.warnings : []) as string[]) {
+      if (typeof w === "string" && !warnings.includes(w)) warnings.push(w);
+    }
+  }
+
+  ctx.log?.("status", `Responsive rendering done for ${url}`);
+
+  return {
+    url,
+    profilesChecked: selected.length,
+    results,
+    summary,
+    issues,
+    warnings,
+  };
 }

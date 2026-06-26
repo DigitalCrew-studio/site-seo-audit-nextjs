@@ -40,6 +40,20 @@ function imageMeta(image: ReportImageEntry): string {
   return parts.join(" · ");
 }
 
+function formatProfileLabel(image: ReportImageEntry): string | null {
+  if (image.profile) {
+    const vp = image.viewport;
+    if (vp && Number.isFinite(vp.width) && Number.isFinite(vp.height)) {
+      return `${image.profile} ${vp.width}×${vp.height}`;
+    }
+    return image.profile;
+  }
+  if (image.viewport && Number.isFinite(image.viewport.width) && Number.isFinite(image.viewport.height)) {
+    return `${image.viewport.width}×${image.viewport.height}`;
+  }
+  return null;
+}
+
 function useImageSrc(image: ReportImageEntry): string | null {
   const [resolved, setResolved] = useState<{ imageId: string; url: string } | null>(null);
 
@@ -167,6 +181,11 @@ function EvidenceCard({
           <span className="truncate text-xs font-medium text-ink-soft" title={image.source}>
             {image.source}
           </span>
+          {formatProfileLabel(image) && (
+            <span className="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-muted">
+              {formatProfileLabel(image)}
+            </span>
+          )}
         </div>
         <p className="truncate font-mono text-[11px] text-muted" title={image.pageUrl ?? image.url}>
           {truncateUrl(image.pageUrl ?? image.url)}
@@ -210,7 +229,15 @@ function Lightbox({
             <div className="truncate font-mono" title={image.pageUrl ?? image.url}>
               {image.pageUrl ?? image.url}
             </div>
-            <div className="eyebrow mt-1 text-faint">{image.source} {imageMeta(image)}</div>
+            <div className="eyebrow mt-1 flex flex-wrap items-center gap-1.5 text-faint">
+              <span>{image.source}</span>
+              {formatProfileLabel(image) && (
+                <span className="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                  {formatProfileLabel(image)}
+                </span>
+              )}
+              {imageMeta(image) && <span>{imageMeta(image)}</span>}
+            </div>
           </div>
           <button
             type="button"

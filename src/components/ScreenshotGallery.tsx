@@ -27,6 +27,20 @@ function truncateUrl(url: string, max = 56): string {
   return url.slice(0, max - 1) + "…";
 }
 
+function formatProfile(shot: ScreenshotEntry): string | null {
+  if (shot.profile) {
+    const vp = shot.viewport;
+    if (vp && Number.isFinite(vp.width) && Number.isFinite(vp.height)) {
+      return `${shot.profile} ${vp.width}×${vp.height}`;
+    }
+    return shot.profile;
+  }
+  if (shot.viewport && Number.isFinite(shot.viewport.width) && Number.isFinite(shot.viewport.height)) {
+    return `${shot.viewport.width}×${shot.viewport.height}`;
+  }
+  return null;
+}
+
 /**
  * Resolves a screenshot entry to a usable image URL.
  *
@@ -98,10 +112,15 @@ function ShotThumb({ shot }: { shot: ScreenshotEntry }) {
         >
           {shot.url ? truncateUrl(shot.url) : "(current page)"}
         </p>
-        <div className="flex items-center justify-between font-mono text-[11px] text-faint">
+        <div className="flex items-center justify-between gap-2 font-mono text-[11px] text-faint">
           <span>{formatTime(shot.takenAt)}</span>
           <span>{formatBytes(shot.bytes)}</span>
         </div>
+        {formatProfile(shot) && (
+          <div className="font-mono text-[11px] text-muted">
+            {formatProfile(shot)}
+          </div>
+        )}
       </div>
     </button>
   );
@@ -149,6 +168,11 @@ function Lightbox({ shot, onClose }: { shot: ScreenshotEntry; onClose: () => voi
             <span className="eyebrow shrink-0 text-faint">
               {formatTime(shot.takenAt)}
             </span>
+            {formatProfile(shot) && (
+              <span className="eyebrow shrink-0 text-muted">
+                {formatProfile(shot)}
+              </span>
+            )}
           </div>
           <button
             type="button"

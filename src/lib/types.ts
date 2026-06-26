@@ -64,6 +64,9 @@ export type ScreenshotEntry = {
   takenAt: string;
   storage: "indexeddb" | "memory";
   imageId?: string;
+  source?: string;
+  profile?: "desktop" | "laptop" | "tablet" | "mobile";
+  viewport?: { width: number; height: number };
 };
 
 /**
@@ -85,12 +88,15 @@ export type ReportImageEntry = {
   takenAt: string;
   storage: "remote" | "indexeddb" | "memory";
   imageId?: string;
+  profile?: "desktop" | "laptop" | "tablet" | "mobile";
+  viewport?: { width: number; height: number };
 };
 
 /**
- * Emitted by the server when `take_screenshot` succeeds. The full base64
- * payload is included for the UI gallery; the model context deliberately
- * omits it (see `shapeToolResult` in `src/lib/audit.ts`).
+ * Emitted by the server when `take_screenshot` succeeds, or per profile by
+ * `inspect_responsive_rendering` / `inspect_mobile_rendering`. The full
+ * base64 payload is included for the UI gallery; the model context
+ * deliberately omits it (see `shapeToolResult` in `src/lib/audit.ts`).
  */
 export type SSEScreenshot = {
   id: string;
@@ -99,6 +105,9 @@ export type SSEScreenshot = {
   base64: string;
   bytes: number;
   takenAt: string;
+  source?: string;
+  profile?: "desktop" | "laptop" | "tablet" | "mobile";
+  viewport?: { width: number; height: number };
 };
 
 // ----- Client log entries (derived from SSE events) -----

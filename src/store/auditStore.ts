@@ -91,6 +91,8 @@ export type SavedAuditImageMeta = {
   height?: number;
   status?: number;
   takenAt: string;
+  profile?: "desktop" | "laptop" | "tablet" | "mobile";
+  viewport?: { width: number; height: number };
 };
 
 export type SavedAudit = {
@@ -238,6 +240,8 @@ function toSavedImageMeta(image: ReportImageEntry): SavedAuditImageMeta {
     height: image.height,
     status: image.status,
     takenAt: image.takenAt,
+    profile: image.profile,
+    viewport: image.viewport,
   };
 }
 
@@ -247,11 +251,13 @@ function toSavedScreenshotMeta(shot: ScreenshotEntry): SavedAuditImageMeta {
     storage: "indexeddb",
     imageId: shot.imageId,
     kind: "screenshot",
-    source: "screenshot",
+    source: shot.source ?? "screenshot",
     url: shot.url ?? "",
     mimeType: shot.mimeType,
     bytes: shot.bytes,
     takenAt: shot.takenAt,
+    profile: shot.profile,
+    viewport: shot.viewport,
   };
 }
 
@@ -517,6 +523,8 @@ export const useAuditStore = create<AuditState>((set, get) => {
         takenAt: meta.takenAt,
         storage: meta.storage,
         imageId: meta.imageId,
+        profile: meta.profile,
+        viewport: meta.viewport,
       }));
       const screenshots: ScreenshotEntry[] = audit.screenshots.map((meta) => ({
         id: meta.id,
@@ -526,6 +534,9 @@ export const useAuditStore = create<AuditState>((set, get) => {
         takenAt: meta.takenAt,
         storage: "indexeddb",
         imageId: meta.imageId,
+        source: meta.source,
+        profile: meta.profile,
+        viewport: meta.viewport,
       }));
       set({
         running: false,
@@ -686,20 +697,30 @@ export const useAuditStore = create<AuditState>((set, get) => {
                   takenAt: p.takenAt,
                   storage: "indexeddb",
                   imageId,
+                  source: p.source,
+                  profile: p.profile,
+                  viewport: p.viewport,
                 };
                 const screenshots = [...s.screenshots, nextShot].slice(-MAX_SCREENSHOTS);
+                const sourceLabel =
+                  p.source ??
+                  (p.profile
+                    ? `responsive rendering · ${p.profile}`
+                    : "screenshot");
                 const reportImage: ReportImageEntry = {
                   id: p.id,
                   kind: "screenshot",
-                  source: "screenshot",
+                  source: sourceLabel,
                   url: p.url ?? "",
                   pageUrl: p.url,
-                  alt: p.url ?? "Screenshot",
+                  alt: p.url ?? sourceLabel,
                   mimeType: p.mimeType,
                   bytes: p.bytes,
                   takenAt: p.takenAt,
                   storage: "indexeddb",
                   imageId,
+                  profile: p.profile,
+                  viewport: p.viewport,
                 };
                 const reportImages = [...s.reportImages, reportImage].slice(-MAX_REPORT_IMAGES);
                 return { screenshots, reportImages };
