@@ -1,10 +1,12 @@
 "use client";
 
+import type { ComponentProps, MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { FileClock, Plus, Trash2, Globe2 } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import type { SavedAudit, SavedAuditStatus } from "@/store/auditStore";
+import { Badge, Panel } from "@/components/ui";
 
 const LOCALE = "ru-RU";
 
@@ -41,16 +43,16 @@ function languageLabel(language: SavedAudit["language"]): string {
   return language === "ru" ? "RU" : "EN";
 }
 
-function statusClasses(status: SavedAuditStatus): string {
+function statusTone(status: SavedAuditStatus): ComponentProps<typeof Badge>["tone"] {
   switch (status) {
     case "running":
-      return "border-accent/30 bg-accent-soft text-accent";
+      return "accent";
     case "completed":
-      return "border-positive/30 bg-positive/10 text-positive";
+      return "positive";
     case "failed":
-      return "border-red-200 bg-red-50 text-red-700";
+      return "danger";
     case "interrupted":
-      return "border-line-strong bg-paper text-muted";
+      return "neutral";
   }
 }
 
@@ -62,8 +64,8 @@ function ConfirmDelete({
   onCancel,
   onConfirm,
 }: {
-  onCancel: (e: React.MouseEvent) => void;
-  onConfirm: (e: React.MouseEvent) => void;
+  onCancel: (e: MouseEvent) => void;
+  onConfirm: (e: MouseEvent) => void;
 }) {
   return (
     <span
@@ -172,11 +174,9 @@ function SavedAuditCard({
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <span
-            className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${statusClasses(audit.status)}`}
-          >
+          <Badge tone={statusTone(audit.status)} className="px-1.5 py-0.5">
             {statusLabel(audit.status)}
-          </span>
+          </Badge>
           {audit.summary && (
             <span className="truncate text-[12px] text-muted" title={audit.summary}>
               {audit.summary}
@@ -214,14 +214,12 @@ export function AuditHistorySidebar() {
   );
 
   return (
-    <aside className="flex h-full flex-col rounded-xl border border-line bg-surface">
+    <Panel as="aside" className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
           <FileClock className="h-4 w-4 text-muted" />
           <h2 className="text-sm font-semibold text-ink">Аудиты</h2>
-          <span className="eyebrow text-faint">
-            {sorted.length > 0 ? `— ${sorted.length}` : ""}
-          </span>
+          {sorted.length > 0 ? <Badge tone="neutral">{sorted.length}</Badge> : null}
         </div>
         <button
           type="button"
@@ -252,6 +250,6 @@ export function AuditHistorySidebar() {
           </ul>
         )}
       </div>
-    </aside>
+    </Panel>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useShallow } from "zustand/react/shallow";
-import { useAuditStore } from "@/store/auditStore";
+import { Menu, X } from "lucide-react";
 import { LogoMark } from "@/components/LogoMark";
 
 type NavItem = {
@@ -21,41 +20,81 @@ const NAV_ITEMS: NavItem[] = [
 
 export function AppBar() {
   const pathname = usePathname();
-  const { running } = useAuditStore(
-    useShallow((s) => ({ running: s.running }))
-  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [compacted, setCompacted] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    if (!running) return;
+    let collapseTimer: number | null = null;
 
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
+    const apply = () => {
+      const isDown = window.scrollY > 12;
+      if (isDown) {
+        if (collapseTimer !== null) {
+          window.clearTimeout(collapseTimer);
+          collapseTimer = null;
+        }
+        setCompacted(true);
+        setScrolled(true);
+      } else if (compacted) {
+        if (collapseTimer === null) {
+          setScrolled(false);
+          collapseTimer = window.setTimeout(() => {
+            setCompacted(false);
+            collapseTimer = null;
+          }, 600);
+        }
+      } else {
+        setScrolled(false);
+        setCompacted(false);
+      }
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [running]);
+    apply();
+    window.addEventListener("scroll", apply, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", apply);
+      if (collapseTimer !== null) window.clearTimeout(collapseTimer);
+    };
+  }, [compacted]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
-      <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+    <header
+      className={`sticky top-0 z-40 transition-all duration-500 ease-out ${
+        compacted ? "py-2" : "border-b border-line bg-surface/85 backdrop-blur"
+      }`}
+    >
+      <div
+        className={`mx-auto flex items-center justify-between gap-4 px-4 transition-all duration-500 ease-out sm:px-6 ${
+          compacted
+            ? "h-14 max-w-[min(68rem,calc(100%_-_1rem))] rounded-full border border-line/70 bg-surface/58 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl backdrop-saturate-150"
+            : "h-[72px] max-w-6xl"
+        }`}
+      >
         <Link
           href="/"
-          className="flex items-center gap-3 rounded-md text-left transition hover:opacity-80"
+          className="group flex items-center gap-3 rounded-full text-left transition hover:opacity-85"
         >
-          <LogoMark size={32} />
+          <LogoMark size={compacted ? 28 : 32} />
           <div className="flex items-baseline gap-2">
-            <span className="text-[19px] font-semibold tracking-tight text-ink">
+            <span
+              className={`font-semibold tracking-tight text-ink transition-all duration-500 ease-out ${
+                compacted ? "text-[17px]" : "text-[19px]"
+              }`}
+            >
               Seofriendly
             </span>
-            <span className="hidden eyebrow text-faint sm:inline">
+            <span
+              className={`hidden eyebrow text-faint transition-opacity duration-500 sm:inline ${
+                compacted ? "opacity-0 lg:opacity-100" : "opacity-100"
+              }`}
+            >
               seo-аудит
             </span>
           </div>
         </Link>
 
-        <nav className="flex items-center gap-1 sm:gap-2">
+        <nav className="hidden items-center gap-6 sm:flex">
           {NAV_ITEMS.map((item) => {
             const active = item.match(pathname);
             return (
@@ -63,29 +102,68 @@ export function AppBar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-md px-3 py-1.5 text-[14px] font-medium transition ${
+                className={`group/link relative py-2 text-[14px] font-medium transition-colors ${
                   active
-                    ? "bg-ink text-paper"
-                    : "text-muted hover:bg-paper hover:text-ink"
+                    ? "text-ink"
+                    : "text-muted hover:text-ink"
                 }`}
               >
                 {item.label}
+                <span
+                  className={`absolute -bottom-0.5 left-0 h-px bg-ink transition-all duration-300 ${
+                    active ? "w-full" : "w-0 group-hover/link:w-full"
+                  }`}
+                />
+                <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accent opacity-0 transition duration-300 group-hover/link:opacity-100" />
               </Link>
             );
           })}
-
-          <div className="ml-2 hidden items-center gap-2 rounded-md border border-line bg-paper px-2.5 py-1.5 sm:ml-3 sm:flex">
-            {running ? (
-              <span className="pulse-dot" />
-            ) : (
-              <span className="h-1.5 w-1.5 rounded-full bg-line-strong" />
-            )}
-            <span className="eyebrow text-muted">
-              {running ? "идёт аудит" : "готово"}
-            </span>
-          </div>
         </nav>
+
+        <button
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-navigation"
+          aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-paper/75 text-ink-soft transition hover:border-line-strong hover:text-ink sm:hidden"
+        >
+          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
+
+      {menuOpen && (
+        <div
+          id="mobile-navigation"
+          className={`mx-auto mt-2 max-w-[calc(100%_-_1rem)] overflow-hidden rounded-2xl border border-line bg-surface/88 shadow-[0_18px_70px_rgba(27,27,25,0.12)] backdrop-blur-xl sm:hidden ${
+            scrolled ? "" : "mb-2"
+          }`}
+        >
+          <nav className="flex flex-col gap-1 px-3 py-3">
+            {NAV_ITEMS.map((item) => {
+              const active = item.match(pathname);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={`group/mobile relative rounded-xl px-3 py-2.5 text-[15px] font-medium transition ${
+                    active
+                      ? "bg-ink text-paper"
+                      : "text-muted hover:bg-paper hover:text-ink"
+                  }`}
+                >
+                  {item.label}
+                  {!active && (
+                    <span className="absolute inset-y-2 left-1 w-0.5 rounded-full bg-accent opacity-0 transition group-hover/mobile:opacity-100" />
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

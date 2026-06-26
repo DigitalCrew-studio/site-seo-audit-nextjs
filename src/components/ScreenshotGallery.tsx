@@ -6,6 +6,7 @@ import { Image as ImageIcon, X } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import { loadAuditImage } from "@/lib/audit-image-store";
 import type { ScreenshotEntry } from "@/lib/types";
+import { Badge, Panel, PanelBody, PanelHeader } from "@/components/ui";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -236,21 +237,27 @@ export function ScreenshotGallery() {
   if (screenshots.length === 0) return null;
 
   return (
-    <section className="border-y border-line py-4">
-      <div className="mb-3 flex items-center gap-2">
-        <ImageIcon className="h-4 w-4 text-muted" />
-        <span className="eyebrow text-muted">скриншоты</span>
-        <span className="eyebrow text-faint">— {screenshots.length}</span>
-        <span className="eyebrow ml-auto text-faint">визуальные доказательства</span>
-      </div>
+    <Panel>
+      <PanelHeader
+        title={
+          <span className="inline-flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-muted" />
+            Визуальные доказательства
+          </span>
+        }
+        description="Скриншоты страниц, сохранённые во время обхода сайта."
+        meta={<Badge tone="neutral">{screenshots.length}</Badge>}
+      />
 
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {screenshots.map((shot) => (
-          <ShotThumb key={shot.id} shot={shot} />
-        ))}
-      </div>
+      <PanelBody>
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {screenshots.map((shot) => (
+            <ShotThumb key={shot.id} shot={shot} />
+          ))}
+        </div>
+      </PanelBody>
 
       {openShot && <Lightbox shot={openShot} onClose={() => setOpenId(null)} />}
-    </section>
+    </Panel>
   );
 }

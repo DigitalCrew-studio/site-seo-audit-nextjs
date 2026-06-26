@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Script from "next/script";
+import { AppBar } from "@/components/AppBar";
+import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -120,7 +122,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${plexSans.variable} ${plexMono.variable}`}
     >
       <body className="bg-paper text-ink antialiased">
+        <AppBar />
         {children}
+        <Footer />
         {YANDEX_METRIKA_ENABLED ? (
           <>
             <Script id="yandex-metrika" strategy="afterInteractive">

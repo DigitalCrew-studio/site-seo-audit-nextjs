@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
+import { Badge, Panel, PanelBody, PanelHeader } from "@/components/ui";
 
 function formatLogSummary(
   log: ReturnType<typeof useAuditStore.getState>["logs"][number]
@@ -66,60 +67,61 @@ export function ProcessLog() {
   if (!running && logs.length === 0) return null;
 
   return (
-    <section className="max-w-full overflow-hidden border-y border-line py-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-3 text-left"
-      >
-        <span className="eyebrow shrink-0 text-faint">
-          процесс — {running ? "идёт" : "завершён"}
-        </span>
-        {running && (
-          <span className="flex shrink-0 items-center gap-2">
-            <span className="pulse-dot" />
-            <span className="eyebrow text-accent">аудит</span>
+    <Panel>
+      <PanelHeader
+        title="Процесс аудита"
+        description={
+          <span className="block truncate font-mono text-[12px] text-muted">
+            {latestText}
           </span>
-        )}
-        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted">
-          {latestText}
-        </span>
-        <span className="eyebrow shrink-0 text-faint">
-          {visibleLogs.length} событий · {open ? "скрыть" : "показать"}
-        </span>
-      </button>
-
-      <div className="mt-2 flex justify-end">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setDebugMode(!debugMode);
-          }}
-          aria-pressed={debugMode}
-          title={
-            debugMode
-              ? "Скрыть отладочные события"
-              : "Показать отладочные события"
-          }
-          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
-            debugMode
-              ? "border-positive/30 bg-positive/5 text-positive hover:bg-positive/10"
-              : "border-line text-muted hover:border-line-strong hover:text-ink"
-          }`}
-        >
-          <span
-            className={`inline-block h-1.5 w-1.5 rounded-full transition ${
-              debugMode ? "bg-positive" : "bg-faint"
-            }`}
-          />
-          подробно
-        </button>
-      </div>
+        }
+        meta={
+          running ? (
+            <Badge tone="accent">
+              <span className="mr-1 pulse-dot" /> идёт
+            </Badge>
+          ) : (
+            <Badge tone="neutral">завершён</Badge>
+          )
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDebugMode(!debugMode)}
+              aria-pressed={debugMode}
+              title={
+                debugMode
+                  ? "Скрыть отладочные события"
+                  : "Показать отладочные события"
+              }
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition ${
+                debugMode
+                  ? "border-positive/30 bg-positive/5 text-positive hover:bg-positive/10"
+                  : "border-line text-muted hover:border-line-strong hover:text-ink"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full transition ${
+                  debugMode ? "bg-positive" : "bg-faint"
+                }`}
+              />
+              подробно
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              className="inline-flex min-h-8 items-center rounded-md border border-line-strong bg-paper px-2.5 py-1 text-[12px] font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink"
+            >
+              {visibleLogs.length} событий · {open ? "скрыть" : "показать"}
+            </button>
+          </div>
+        }
+      />
 
       {open && (
-        <div className="terminal-scroll mt-3 max-h-[22rem] space-y-1.5 overflow-x-auto overflow-y-auto font-mono text-[13px] leading-relaxed">
+        <PanelBody className="terminal-scroll max-h-[22rem] space-y-1.5 overflow-x-auto overflow-y-auto bg-paper/35 font-mono text-[13px] leading-relaxed">
           {visibleLogs.map((log, idx) => (
             <div key={idx} className="flex min-w-0 gap-3">
               <span className="shrink-0 select-none text-faint">{log.time}</span>
@@ -185,8 +187,8 @@ export function ProcessLog() {
             </div>
           )}
           <div ref={logsEndRef} />
-        </div>
+        </PanelBody>
       )}
-    </section>
+    </Panel>
   );
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { AppBar } from "@/components/AppBar";
 import { SettingsForm } from "@/components/SettingsForm";
+import { Badge, PageHeader, Panel } from "@/components/ui";
 
 const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
@@ -38,22 +38,45 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
   return (
     <main className="min-h-screen">
-      <AppBar />
-
       <div className="paper-grid">
-        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
-          <div className="mb-6">
-            <span className="eyebrow text-accent">конфигурация</span>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">
-              Настройки Seofriendly
-            </h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted">
-              Ключ доступа, провайдер, модель и язык отчёта. Все значения
-              хранятся локально в браузере и не передаются на сторонние серверы.
-            </p>
-          </div>
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+          <PageHeader
+            eyebrow="конфигурация"
+            title="Настройки Seofriendly"
+            description="Локальная конфигурация аудита сейчас и место для аккаунта пользователя позже."
+          />
 
-          <SettingsForm />
+          <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
+            <div className="min-w-0 lg:sticky lg:top-[88px] lg:self-start">
+              <Panel as="aside" className="p-4">
+                <p className="text-sm font-semibold text-ink">Разделы</p>
+                <div className="mt-4 space-y-2 text-[13px]">
+                  <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-ink">Локальная конфигурация</span>
+                      <Badge tone="positive">активно</Badge>
+                    </div>
+                    <p className="mt-1 leading-relaxed text-muted">
+                      Ключ, модель, язык отчёта и подробность логов.
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-dashed border-line bg-surface px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-muted">Аккаунт</span>
+                      <Badge tone="neutral">позже</Badge>
+                    </div>
+                    <p className="mt-1 leading-relaxed text-faint">
+                      Профиль и синхронизация появятся отдельным этапом.
+                    </p>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+
+            <div className="min-w-0">
+              <SettingsForm />
+            </div>
+          </div>
         </div>
       </div>
     </main>

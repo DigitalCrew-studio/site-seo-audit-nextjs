@@ -1,0 +1,78 @@
+import Link from "next/link";
+import { LogoMark } from "@/components/LogoMark";
+
+const NAV_LINKS = [
+  { href: "/", label: "Главная" },
+  { href: "/audit", label: "Аудит" },
+  { href: "/settings", label: "Настройки" },
+] as const;
+
+const TECH_LINKS = [
+  { href: "/robots.txt", label: "robots.txt" },
+  { href: "/sitemap.xml", label: "sitemap.xml" },
+  { href: "/llms.txt", label: "llms.txt" },
+] as const;
+
+export function Footer() {
+  return (
+    <footer className="border-t border-line bg-surface/70">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="grid gap-8 md:grid-cols-[1.35fr_0.8fr_0.8fr]">
+          <div className="max-w-md">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-3 rounded-md transition hover:opacity-80"
+            >
+              <LogoMark size={30} />
+              <span className="text-[17px] font-semibold tracking-tight text-ink">
+                Seofriendly
+              </span>
+            </Link>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Бесплатный SEO-аудит сайта нейросетью: технические факты,
+              визуальные доказательства и отчёт с приоритетами.
+            </p>
+            <p className="mt-3 text-[12px] leading-relaxed text-faint">
+              API-ключ, история аудитов и настройки хранятся локально в браузере.
+            </p>
+          </div>
+
+          <div>
+            <p className="eyebrow text-faint">навигация</p>
+            <nav className="mt-3 flex flex-col items-start gap-2">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm font-medium text-muted transition hover:text-ink"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          <div>
+            <p className="eyebrow text-faint">техническое</p>
+            <nav className="mt-3 flex flex-col items-start gap-2">
+              {TECH_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="font-mono text-[13px] text-muted transition hover:text-ink"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-2 border-t border-line pt-5 text-[12px] text-faint sm:flex-row sm:items-center sm:justify-between">
+          <span>© 2026 Seofriendly</span>
+          <span>Работает без регистрации и серверного хранения аудитов.</span>
+        </div>
+      </div>
+    </footer>
+  );
+}

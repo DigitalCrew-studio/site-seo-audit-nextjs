@@ -45,28 +45,6 @@
   text-transform: uppercase;
 }
 
-/* Field input baseline */
-.field {
-  width: 100%;
-  border: 1px solid var(--color-line);
-  background-color: var(--color-surface);
-  border-radius: 10px;
-  min-height: 2.875rem;
-  padding: 0.75rem 0.875rem;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  color: var(--color-ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.field::placeholder {
-  color: var(--color-faint);
-}
-.field:focus {
-  outline: none;
-  border-color: var(--color-ink);
-  box-shadow: 0 0 0 3px rgba(27, 27, 25, 0.08);
-}
-
 /* Pulsing "recording" dot */
 .pulse-dot {
   position: relative;
@@ -121,6 +99,109 @@
     transparent 0
   );
   background-size: 22px 22px;
+}
+
+/* Small motion accents: subtle enough to keep the UI calm. */
+.ambient-float {
+  animation: ambient-float 7s ease-in-out infinite;
+}
+
+.ambient-glow {
+  animation: ambient-glow 8s ease-in-out infinite;
+}
+
+.soft-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.soft-sheen::after {
+  content: "";
+  position: absolute;
+  inset: -40% -70%;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.32) 48%,
+    transparent 58%
+  );
+  transform: translateX(-45%) rotate(6deg);
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.soft-sheen:hover::after,
+.soft-sheen:focus-within::after {
+  opacity: 1;
+  animation: soft-sheen 1.2s ease forwards;
+}
+
+@keyframes ambient-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes ambient-glow {
+  0%,
+  100% {
+    opacity: 0.68;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes soft-sheen {
+  to {
+    transform: translateX(55%) rotate(6deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-float,
+  .ambient-glow,
+  .soft-sheen:hover::after,
+  .soft-sheen:focus-within::after {
+    animation: none;
+  }
+}
+
+/* Bento cards: soft spotlight that follows the pointer. */
+.card-spotlight {
+  --mx: 50%;
+  --my: 50%;
+  --card-spotlight: rgba(180, 83, 9, 0.32);
+}
+
+.card-spotlight-glow[data-tone="0"] {
+  --card-spotlight: rgba(180, 83, 9, 0.42);
+}
+.card-spotlight-glow[data-tone="1"] {
+  --card-spotlight: rgba(180, 83, 9, 0.42);
+}
+.card-spotlight-glow[data-tone="2"] {
+  --card-spotlight: rgba(21, 128, 61, 0.42);
+}
+.card-spotlight-glow[data-tone="3"] {
+  --card-spotlight: rgba(180, 83, 9, 0.32);
+}
+
+.card-spotlight-glow {
+  transition: opacity 220ms ease, background 60ms linear;
+}
+
+@media (hover: none) {
+  .card-spotlight-glow {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

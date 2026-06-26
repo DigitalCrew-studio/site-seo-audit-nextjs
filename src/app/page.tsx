@@ -1,24 +1,24 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
-  Globe2,
-  ShieldCheck,
-  FileSearch,
-  BarChart3,
   Camera,
-  Link2,
-  Activity,
-  Building2,
-  Map as MapIcon,
-  Gauge,
   CheckCircle2,
+  Compass,
+  Eye,
   FileText,
   History,
-  Eye,
-  Compass,
+  Map as MapIcon,
+  ShieldCheck,
 } from "lucide-react";
-import { AppBar } from "@/components/AppBar";
+import { HeroAuditGraphic } from "@/components/HeroAuditGraphic";
+import { LinkButton, SectionHeader } from "@/components/ui";
+import {
+  CAPABILITIES,
+  CAPABILITY_CARD_TONES,
+  type Capability,
+} from "@/lib/capabilities";
+import { CapabilityBentoCard } from "@/components/CapabilityBentoCard";
 
 const SITE_URL = "https://seofrendly.ru";
 const SITE_NAME = "Seofriendly";
@@ -57,87 +57,6 @@ export const metadata: Metadata = {
     images: ["/twitter-image"],
   },
 };
-
-type Capability = {
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
-
-const CAPABILITIES: Capability[] = [
-  {
-    title: "HTTP, редиректы, заголовки",
-    description:
-      "Проверяем коды ответов, цепочки редиректов, заголовки безопасности и сжатие, чтобы в отчёте были только реальные сетевые следы сайта.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Мета-теги, canonical, robots",
-    description:
-      "Считываем title, description, Open Graph, Twitter Card, canonical и robots с реальной страницы, отрендеренной в headless Chromium.",
-    icon: FileSearch,
-  },
-  {
-    title: "sitemap.xml и структура",
-    description:
-      "Парсим sitemap.xml, контрольные URL и выборку внутренних страниц, чтобы видеть структуру сайта, а не одну точку входа.",
-    icon: MapIcon,
-  },
-  {
-    title: "Hreflang и локализация",
-    description:
-      "Сверяем hreflang-аннотации и атрибуты lang с реальными языками страниц и находим противоречия между заявленной и фактической локализацией.",
-    icon: Link2,
-  },
-  {
-    title: "Структурированные данные",
-    description:
-      "Извлекаем JSON-LD, Microdata и RDFa, проверяем их валидность и соответствие типу страницы.",
-    icon: BarChart3,
-  },
-  {
-    title: "OG и Twitter превью",
-    description:
-      "Загружаем Open Graph и Twitter Card изображения, фиксируем размеры, MIME-тип и доступность, чтобы превью в соцсетях не были битыми.",
-    icon: Camera,
-  },
-  {
-    title: "Скорость и адаптивность",
-    description:
-      "Запускаем Lighthouse для mobile и desktop, проверяем Core Web Vitals, viewport, overflow и touch-targets на разных разрешениях экрана.",
-    icon: Gauge,
-  },
-  {
-    title: "Здоровье ссылок",
-    description:
-      "Проверяем внутренние ссылки пачками: коды ответов, редиректы, тайтлы и контентные изменения, чтобы в отчёте были только живые URL.",
-    icon: Link2,
-  },
-  {
-    title: "Аналитика и сторонние теги",
-    description:
-      "Находим GA4, GTM, Meta Pixel, Яндекс.Метрику и другие счётчики прямо в DOM, с фиксацией загрузки и видимости в headless-режиме.",
-    icon: Activity,
-  },
-  {
-    title: "Домен и безопасность",
-    description:
-      "Смотрим на DNS, TLS, whois-сигналы и упоминания бренда, чтобы отличить технические SEO-проблемы от доверительных сигналов домена.",
-    icon: Building2,
-  },
-  {
-    title: "Скриншоты и визуальные доказательства",
-    description:
-      "Сохраняем визуальные срезы страниц как доказательства: они помогают быстро увидеть проблемы с рендерингом, адаптивностью и превью.",
-    icon: Eye,
-  },
-  {
-    title: "Только URL",
-    description:
-      "Не нужен доступ к Search Console, не нужны выгрузки и файлы. Достаточно ввести домен и получить диагностический отчёт.",
-    icon: Globe2,
-  },
-];
 
 const CHECKS = [
   "Доступность сайта: коды ответов, цепочки 3xx-редиректов, битые ссылки",
@@ -326,56 +245,55 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <AppBar />
-
       <div className="paper-grid">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
           {/* Hero */}
-          <section className="max-w-3xl">
-            <span className="eyebrow text-accent">бесплатный seo-аудит нейросетью</span>
-            <h1 className="mt-3 text-[2.4rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-[3rem]">
-              Бесплатный SEO-аудит сайта
-              <span className="block text-muted">
-                нейросетью — по одному URL, без выгрузок и&nbsp;регистрации.
-              </span>
-            </h1>
-            <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted">
-              Seofriendly проводит бесплатный SEO-аудит нейросетью: браузер
-              обходит сайт, читает <span className="font-medium text-ink-soft">sitemap.xml</span> и{" "}
-              <span className="font-medium text-ink-soft">robots.txt</span>, проверяет{" "}
-              <span className="font-medium text-ink-soft">canonical</span>, редиректы,
-              мета-теги, скорость и адаптивность, а нейросеть превращает эти данные
-              в структурированный отчёт с приоритетами и доказательствами.
-            </p>
+          <section className="grid min-w-0 items-center gap-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-10">
+            <div className="min-w-0 max-w-3xl">
+              <span className="eyebrow text-accent">бесплатный seo-аудит нейросетью</span>
+              <h1 className="mt-3 text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-[3rem]">
+                Бесплатный SEO - аудит сайта
+                <span className="block text-muted">
+                  нейросетью по одному URL, без выгрузок и&nbsp;регистрации.
+                </span>
+              </h1>
+              <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted">
+                Браузер собирает технические факты сайта, а нейросеть превращает
+                их в понятный отчёт с приоритетами и доказательствами.
+              </p>
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link
-                href="/audit"
-                className="group inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-5 py-3 text-sm font-semibold text-paper transition hover:bg-ink-soft"
-              >
-                Запустить аудит
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                href="/settings"
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-5 py-3 text-sm font-semibold text-ink-soft transition hover:border-ink hover:text-ink"
-              >
-                Открыть настройки
-              </Link>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <LinkButton href="/audit" className="group w-full sm:w-auto">
+                  Запустить аудит
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </LinkButton>
+                <LinkButton
+                  href="/settings"
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                >
+                  Открыть настройки
+                </LinkButton>
+              </div>
             </div>
 
-            <p className="mt-4 text-[13px] text-faint">
-              Достаточно открытого URL — нейросеть проанализирует собранные данные
-              и покажет, что мешает росту сайта в поиске.
-            </p>
+            <div className="hidden min-w-0 lg:block lg:pl-2">
+              <HeroAuditGraphic />
+            </div>
           </section>
 
           {/* Proof stats */}
-          <section className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
-            {PROOF.map((stat) => (
+          <section className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_70px_rgba(27,27,25,0.06)] sm:grid-cols-4">
+            {PROOF.map((stat, index) => (
               <div
                 key={stat.label}
-                className="flex flex-col gap-1 bg-surface px-5 py-5"
+                className={`soft-sheen relative flex flex-col gap-1 overflow-hidden bg-surface px-5 py-5 transition duration-300 hover:-translate-y-0.5 ${
+                  index === 0
+                    ? "bg-[radial-gradient(circle_at_15%_0%,rgba(180,83,9,0.18),transparent_42%),var(--color-surface)]"
+                    : index === 2
+                      ? "bg-[radial-gradient(circle_at_100%_0%,rgba(21,128,61,0.14),transparent_44%),var(--color-surface)]"
+                      : ""
+                }`}
               >
                 <span className="font-mono text-2xl font-semibold tracking-tight text-ink">
                   {stat.value}
@@ -387,42 +305,28 @@ export default function HomePage() {
 
           {/* What is checked */}
           <section className="mt-14">
-            <div className="mb-6 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold tracking-tight text-ink">
-                Что проверяется
-              </h2>
-              <span className="eyebrow text-faint">12 направлений · 60+ проверок</span>
-            </div>
-            <ul className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-              {CAPABILITIES.map((cap) => {
-                const Icon = cap.icon;
-                return (
-                  <li
-                    key={cap.title}
-                    className="flex flex-col gap-2 bg-surface px-5 py-5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent-soft text-accent">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <h3 className="text-[14px] font-semibold text-ink">
-                        {cap.title}
-                      </h3>
-                    </div>
-                    <p className="text-[13px] leading-relaxed text-muted">
-                      {cap.description}
-                    </p>
-                  </li>
-                );
-              })}
+            <SectionHeader
+              title="Что проверяется"
+              description="Двенадцать направлений диагностики: от HTTP-следов до визуальных доказательств и локализации."
+              aside={<span className="font-mono text-xs text-faint">12 направлений / 60+ проверок</span>}
+            />
+            <ul className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {CAPABILITIES.map((cap, index) => (
+                <CapabilityBentoCard
+                  key={cap.title}
+                  cap={cap}
+                  index={index}
+                  tones={CAPABILITY_CARD_TONES}
+                />
+              ))}
             </ul>
           </section>
 
           {/* Checklist of things checked */}
-          <section className="mt-14 grid gap-6 rounded-xl border border-line bg-surface p-6 sm:grid-cols-[1fr_1.1fr] sm:p-8">
-            <div>
-              <span className="eyebrow text-muted">чек-лист проверок</span>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">
+          <section className="relative mt-14 grid min-w-0 gap-6 overflow-visible rounded-xl border border-line bg-[radial-gradient(circle_at_7%_92%,rgba(180,83,9,0.14),transparent_28%),radial-gradient(circle_at_88%_8%,rgba(21,128,61,0.08),transparent_34%),var(--color-surface)] p-6 shadow-[0_18px_80px_rgba(27,27,25,0.06)] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:p-8">
+            <div className="pointer-events-none absolute -left-10 bottom-8 h-44 w-44 rounded-full bg-accent/10 blur-3xl" />
+            <div className="flex min-w-0 flex-col">
+              <h2 className="text-xl font-semibold tracking-tight text-ink">
                 Что именно видит Seofriendly на&nbsp;сайте
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-muted">
@@ -431,23 +335,39 @@ export default function HomePage() {
                 группирует проблемы и объясняет, с чего лучше начать.
               </p>
               <div className="mt-5">
-                <Link
+                <LinkButton
                   href="/audit"
-                  className="group inline-flex items-center gap-2 rounded-lg border border-ink px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper"
+                  variant="outline"
+                  className="group"
                 >
                   Запустить аудит
                   <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                </Link>
+                </LinkButton>
+              </div>
+              <div
+                aria-hidden="true"
+                className="pointer-events-none relative mt-1 min-h-[220px] sm:mt-auto sm:min-h-[260px] lg:min-h-[320px]"
+              >
+                <Image
+                  src="/what-you-see.webp"
+                  alt=""
+                  fill
+                  sizes="(min-width: 1024px) 483px, (min-width: 640px) 300px, calc(100vw - 82px)"
+                  className="scale-115 object-contain object-center -translate-y-3 sm:-translate-x-5 sm:-translate-y-5 sm:scale-125 lg:-translate-x-10 lg:-translate-y-8 lg:scale-135 lg:object-left-bottom"
+                  loading="eager"
+                />
               </div>
             </div>
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="relative grid min-w-0 gap-2 sm:grid-cols-2">
               {CHECKS.map((item) => (
                 <li
                   key={item}
-                  className="flex gap-2.5 rounded-lg border border-line bg-paper/60 px-3.5 py-2.5 text-[13px] leading-snug text-ink-soft"
+                  className="flex min-w-0 gap-2.5 rounded-lg border border-line bg-paper/70 px-3.5 py-2.5 text-[13px] leading-snug text-ink-soft transition duration-200 hover:-translate-y-0.5 hover:border-positive/30 hover:bg-surface"
                 >
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-positive" />
-                  <span>{item}</span>
+                  <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                    {item}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -455,27 +375,36 @@ export default function HomePage() {
 
           {/* How it works */}
           <section className="mt-14">
-            <div className="mb-6 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold tracking-tight text-ink">
-                Как проходит аудит
-              </h2>
-              <span className="eyebrow text-faint">4 шага</span>
-            </div>
-            <ol className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {STEPS.map((step) => {
+            <SectionHeader
+              title="Как проходит аудит"
+              description="Процесс линейный: вы вводите домен, браузер собирает факты, затем нейросеть собирает отчёт."
+              aside={<span className="font-mono text-xs text-faint">4 шага</span>}
+            />
+            <ol className="grid gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_70px_rgba(27,27,25,0.05)] md:grid-cols-2 lg:grid-cols-4">
+              {STEPS.map((step, index) => {
                 const Icon = step.icon;
                 return (
                   <li
                     key={step.title}
-                    className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5"
+                    className={`relative flex flex-col gap-3 overflow-hidden bg-surface p-5 transition duration-300 hover:-translate-y-0.5 ${
+                      index === 1
+                        ? "bg-[radial-gradient(circle_at_80%_0%,rgba(180,83,9,0.16),transparent_38%),var(--color-surface)]"
+                        : index === 3
+                          ? "bg-[linear-gradient(135deg,var(--color-ink),#3d3d38)] text-paper"
+                          : ""
+                    }`}
                   >
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-paper text-ink-soft">
+                    <span
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${
+                        index === 3 ? "bg-paper/10 text-paper" : "bg-paper text-ink-soft"
+                      }`}
+                    >
                       <Icon className="h-4.5 w-4.5" />
                     </span>
-                    <h3 className="text-[14px] font-semibold text-ink">
+                    <h3 className={`text-[14px] font-semibold ${index === 3 ? "text-paper" : "text-ink"}`}>
                       {step.title}
                     </h3>
-                    <p className="text-[13px] leading-relaxed text-muted">
+                    <p className={`text-[13px] leading-relaxed ${index === 3 ? "text-paper/70" : "text-muted"}`}>
                       {step.text}
                     </p>
                   </li>
@@ -486,19 +415,23 @@ export default function HomePage() {
 
           {/* Report deliverables */}
           <section className="mt-14">
-            <div className="mb-6 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold tracking-tight text-ink">
-                Что вы получаете в&nbsp;отчёте
-              </h2>
-              <span className="eyebrow text-faint">deliverables</span>
-            </div>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {DELIVERABLES.map((d) => {
+            <SectionHeader
+              title="Что вы получаете в&nbsp;отчёте"
+              description="Не абстрактную оценку, а набор артефактов, к которым можно вернуться после запуска."
+            />
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
+              {DELIVERABLES.map((d, index) => {
                 const Icon = d.icon;
                 return (
                   <li
                     key={d.title}
-                    className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-5"
+                    className={`soft-sheen flex flex-col gap-2 rounded-xl border border-line bg-surface p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_60px_rgba(27,27,25,0.08)] ${
+                      index === 0
+                        ? "border-accent/20 bg-[radial-gradient(circle_at_18%_18%,rgba(180,83,9,0.18),transparent_36%),var(--color-accent-soft)]"
+                        : index === 2
+                          ? "bg-[radial-gradient(circle_at_85%_0%,rgba(21,128,61,0.12),transparent_42%),var(--color-surface)]"
+                          : ""
+                    }`}
                   >
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
                       <Icon className="h-4.5 w-4.5" />
@@ -516,10 +449,10 @@ export default function HomePage() {
           </section>
 
           {/* Evidence note */}
-          <section className="mt-14 grid gap-6 rounded-xl border border-line bg-surface p-6 sm:grid-cols-[1fr_1.1fr] sm:p-8">
+          <section className="relative mt-14 grid gap-6 overflow-hidden rounded-xl border border-line bg-[radial-gradient(circle_at_8%_0%,rgba(180,83,9,0.15),transparent_28%),linear-gradient(135deg,var(--color-surface),var(--color-paper))] p-6 shadow-[0_18px_80px_rgba(27,27,25,0.06)] sm:grid-cols-[1fr_1.1fr] sm:p-8">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-positive/10 blur-3xl" />
             <div>
-              <span className="eyebrow text-muted">доказательная база</span>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">
+              <h2 className="text-xl font-semibold tracking-tight text-ink">
                 Каждый вывод подтверждён, а&nbsp;не&nbsp;придуман
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-muted">
@@ -543,10 +476,12 @@ export default function HomePage() {
                 </li>
               </ul>
             </div>
-            <div className="rounded-xl border border-line bg-paper/60 p-5">
-              <span className="eyebrow text-faint">фрагмент карты обхода</span>
-              <pre className="mt-3 overflow-x-auto rounded-lg border border-line bg-surface p-4 font-mono text-[12px] leading-relaxed text-ink-soft">
-{`/                         200   ok
+            <div className="relative min-w-0 rounded-xl border border-line bg-paper/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+              <p className="font-mono text-[12px] font-medium text-faint">
+                Фрагмент карты обхода
+              </p>
+              <pre className="mt-3 max-w-full overflow-x-auto rounded-lg border border-line bg-surface p-4 font-mono text-[12px] leading-relaxed text-ink-soft">
+                {`/                         200   ok
 /about                     200   ok
 /blog                      200   ok
 /contacts                  200   ok
@@ -565,15 +500,7 @@ export default function HomePage() {
 
           {/* FAQ */}
           <section className="mt-14" aria-labelledby="faq-heading">
-            <div className="mb-6 flex items-baseline justify-between">
-              <h2
-                id="faq-heading"
-                className="text-lg font-semibold tracking-tight text-ink"
-              >
-                Частые вопросы
-              </h2>
-              <span className="eyebrow text-faint">FAQ</span>
-            </div>
+            <SectionHeader title={<span id="faq-heading">Частые вопросы</span>} />
             <div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line">
               {FAQ.map((item) => (
                 <details
@@ -600,8 +527,7 @@ export default function HomePage() {
           {/* Final CTA */}
           <section className="mt-14 flex flex-col items-start gap-4 rounded-2xl border border-ink bg-ink p-8 text-paper sm:flex-row sm:items-center sm:justify-between sm:p-10">
             <div className="max-w-xl">
-              <span className="eyebrow text-paper/60">готовы проверить сайт?</span>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+              <h2 className="text-2xl font-semibold tracking-tight">
                 Запустите бесплатный SEO-аудит за&nbsp;пару&nbsp;минут
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-paper/70">
@@ -610,13 +536,14 @@ export default function HomePage() {
                 понятными следующими шагами.
               </p>
             </div>
-            <Link
+            <LinkButton
               href="/audit"
-              className="group inline-flex shrink-0 items-center gap-2 rounded-lg bg-paper px-5 py-3 text-sm font-semibold text-ink transition hover:bg-accent-soft"
+              variant="inverse"
+              className="group w-full sm:w-auto"
             >
               Запустить аудит
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </Link>
+            </LinkButton>
           </section>
         </div>
       </div>
