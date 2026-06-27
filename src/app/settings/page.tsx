@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/SettingsForm";
-import { ApiKeyGuide } from "@/components/ApiKeyGuide";
 import { Badge, PageHeader, Panel } from "@/components/ui";
 import { SITE_URL } from "@/lib/site";
 
 const SITE_NAME = "Seofriendly";
 
-// /settings is private: it stores the user's API key, model, language and
-// report preferences in localStorage. It must not be indexed, surfaced in
-// search results, or distributed via the sitemap. It remains crawlable so
-// crawlers can see the noindex directive; API routes are blocked in robots.ts.
+// /settings is private: it stores the user's language and report preferences
+// in localStorage. It must not be indexed, surfaced in search results, or
+// distributed via the sitemap. It remains crawlable so crawlers can see the
+// noindex directive; API routes are blocked in robots.ts.
 export const metadata: Metadata = {
   title: "Настройки",
-  description: "Локальные настройки Seofriendly: API-ключ, провайдер, модель.",
+  description:
+    "Настройки Seofriendly: язык отчёта, подробность логов и локальные параметры интерфейса.",
   alternates: {
     canonical: `${SITE_URL}/settings`,
   },
   openGraph: {
     title: "Настройки",
-    description: "Локальные настройки Seofriendly: API-ключ, провайдер, модель.",
+    description:
+      "Настройки Seofriendly: язык отчёта, подробность логов и локальные параметры интерфейса.",
     url: `${SITE_URL}/settings`,
     type: "website",
     locale: "ru_RU",
@@ -52,7 +53,7 @@ export default function SettingsPage() {
           <PageHeader
             eyebrow="конфигурация"
             title="Настройки Seofriendly"
-            description="Локальная конфигурация аудита: API-ключ, провайдер, модель, язык отчёта. Всё хранится только в вашем браузере, сервер аудита ключи не сохраняет."
+            description="Язык отчёта, подробность логов и локальные параметры интерфейса. Для запуска аудита достаточно URL сайта."
           />
 
           <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
@@ -62,20 +63,11 @@ export default function SettingsPage() {
                 <div className="mt-4 space-y-2 text-[13px]">
                   <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-ink">Как получить ключ</span>
-                      <Badge tone="positive">новое</Badge>
-                    </div>
-                    <p className="mt-1 leading-relaxed text-muted">
-                      Что это такое и пошаговая инструкция.
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-ink">Локальная конфигурация</span>
                       <Badge tone="positive">активно</Badge>
                     </div>
                     <p className="mt-1 leading-relaxed text-muted">
-                      Ключ, модель, язык отчёта и подробность логов.
+                      Язык отчёта и подробность логов.
                     </p>
                   </div>
                   <div className="rounded-lg border border-dashed border-line bg-surface px-3 py-2.5">
@@ -92,7 +84,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="min-w-0 space-y-6">
-              <ApiKeyGuide />
               <SettingsForm />
             </div>
           </div>

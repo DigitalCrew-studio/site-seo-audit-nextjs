@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { Loader2, ArrowRight, Settings, AlertTriangle, Radio } from "lucide-react";
+import { Loader2, ArrowRight, AlertTriangle, Radio } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 import {
@@ -10,7 +9,6 @@ import {
   Button,
   FieldLabel,
   Input,
-  LinkButton,
   Panel,
   PanelBody,
   PanelHeader,
@@ -19,8 +17,6 @@ import {
 
 export function AuditForm() {
   const {
-    apiKey,
-    modelId,
     url,
     setUrl,
     running,
@@ -29,11 +25,8 @@ export function AuditForm() {
     cancelBackgroundRun,
     error,
     hydrate,
-    fetchModels,
   } = useAuditStore(
     useShallow((s) => ({
-      apiKey: s.apiKey,
-      modelId: s.modelId,
       url: s.url,
       setUrl: s.setUrl,
       running: s.running,
@@ -42,26 +35,18 @@ export function AuditForm() {
       cancelBackgroundRun: s.cancelBackgroundRun,
       error: s.error,
       hydrate: s.hydrate,
-      fetchModels: s.fetchModels,
     }))
   );
 
-  // Restore saved settings from localStorage and reload models if an API key exists.
+  // Restore saved language + URL from localStorage.
   useEffect(() => {
     hydrate();
-    const { apiKey: storedKey } = useAuditStore.getState();
-    if (storedKey.trim()) {
-      void fetchModels();
-    }
-  }, [hydrate, fetchModels]);
+  }, [hydrate]);
 
-  const missingApiKey = !apiKey.trim();
-  const missingModel = !modelId;
   const missingUrl = !url.trim();
-  const settingsIncomplete = missingApiKey || missingModel;
   // While a run is on screen we keep the button busy, but a background run
   // does not block starting a new one (clicking it will cancel the old run).
-  const disableRun = running || settingsIncomplete || missingUrl;
+  const disableRun = running || missingUrl;
 
   return (
     <Panel>
@@ -73,8 +58,6 @@ export function AuditForm() {
             <Badge tone="accent">идёт аудит</Badge>
           ) : backgroundRunActive ? (
             <Badge tone="accent">идёт в фоне</Badge>
-          ) : settingsIncomplete ? (
-            <Badge tone="neutral">нужны настройки</Badge>
           ) : (
             <Badge tone="positive">готово</Badge>
           )
@@ -82,25 +65,6 @@ export function AuditForm() {
       />
 
       <PanelBody className="space-y-5">
-        {settingsIncomplete && (
-          <StatusNotice
-            role="alert"
-            tone="warning"
-            icon={<AlertTriangle className="h-4 w-4 text-accent" />}
-            heading={missingApiKey ? "Не указан API-ключ" : "Не выбрана модель"}
-          >
-            Перед запуском откройте{" "}
-            <Link
-              href="/settings"
-              className="inline-flex items-center gap-1 font-medium text-ink underline-offset-2 hover:underline"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              настройки
-            </Link>{" "}
-            и заполните ключ доступа и модель.
-          </StatusNotice>
-        )}
-
         {running && (
           <StatusNotice
             role="alert"
@@ -166,16 +130,6 @@ export function AuditForm() {
               : "Аудит запускается в headless Chromium и формирует отчёт с доказательствами."}
         </p>
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          {settingsIncomplete && (
-            <LinkButton
-              href="/settings"
-              variant="secondary"
-              className="w-full sm:w-auto"
-            >
-              <Settings className="h-4 w-4" />
-              Открыть настройки
-            </LinkButton>
-          )}
           <Button
             variant="primary"
             className="group w-full sm:w-auto"

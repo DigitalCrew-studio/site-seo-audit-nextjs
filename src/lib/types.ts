@@ -1,13 +1,10 @@
-export type OpenCodeGroup = "go" | "zen";
+export type OpenCodeGroup = "zen";
 
 export type ModelInfo = { id: string; name: string };
 
 export type AuditLanguage = "en" | "ru";
 
 export type AuditRequest = {
-  apiKey: string;
-  modelId: string;
-  group: OpenCodeGroup;
   url: string;
   language: AuditLanguage;
   /**

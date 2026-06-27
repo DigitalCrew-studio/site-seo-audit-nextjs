@@ -3,8 +3,6 @@ import { consumeSSE } from "@/lib/sse-client";
 import type {
   AuditLanguage,
   LogEntry,
-  ModelInfo,
-  OpenCodeGroup,
   ReportImageEntry,
   ScreenshotEntry,
 } from "@/lib/types";
@@ -15,12 +13,14 @@ import {
   saveAuditImage,
 } from "@/lib/audit-image-store";
 
-const STORAGE_KEY = "opencode_api_key";
-const GROUP_STORAGE_KEY = "opencode_group";
-const MODEL_ID_STORAGE_KEY = "opencode_model_id";
-const LANGUAGE_STORAGE_KEY = "opencode_language";
-const LAST_URL_STORAGE_KEY = "opencode_last_url";
-const SAVED_AUDITS_STORAGE_KEY = "opencode_saved_audits";
+const LANGUAGE_STORAGE_KEY = "seofriendly_language";
+const LAST_URL_STORAGE_KEY = "seofriendly_last_url";
+const SAVED_AUDITS_STORAGE_KEY = "seofriendly_saved_audits";
+const LEGACY_STORAGE_KEYS = {
+  language: "opencode_language",
+  lastUrl: "opencode_last_url",
+  savedAudits: "opencode_saved_audits",
+} as const;
 const MAX_LOG_ENTRIES = 2000;
 const MAX_SCREENSHOTS = 20;
 const MAX_REPORT_IMAGES = 30;
@@ -119,13 +119,8 @@ export type SavedAudit = {
 
 type AuditState = {
   // ----- form state -----
-  apiKey: string;
-  models: Record<OpenCodeGroup, ModelInfo[]>;
-  group: OpenCodeGroup;
-  modelId: string;
   language: AuditLanguage;
   url: string;
-  loadingModels: boolean;
   // ----- audit state -----
   running: boolean;
   // True when a run is alive in the background (i.e. the user has navigated
@@ -147,14 +142,10 @@ type AuditState = {
   // ----- actions -----
   hydrate: () => void;
   hydrateSavedAudits: () => void;
-  setApiKey: (v: string) => void;
-  setGroup: (g: OpenCodeGroup) => void;
-  setModelId: (id: string) => void;
   setLanguage: (l: AuditLanguage) => void;
   setUrl: (v: string) => void;
   setReportOpen: (open: boolean) => void;
   setDebugMode: (v: boolean) => void;
-  fetchModels: () => Promise<void>;
   runAudit: () => Promise<void>;
   newAudit: () => void;
   loadSavedAudit: (id: string) => void;
@@ -164,6 +155,7 @@ type AuditState = {
 
 function readSavedAuditsFromStorage(): SavedAudit[] {
   if (typeof window === "undefined") return [];
+  migrateLegacyStorage();
   try {
     const raw = localStorage.getItem(SAVED_AUDITS_STORAGE_KEY);
     if (!raw) return [];
@@ -182,6 +174,37 @@ function readSavedAuditsFromStorage(): SavedAudit[] {
       .slice(0, MAX_SAVED_AUDITS);
   } catch {
     return [];
+  }
+}
+
+// One-time migration from the previous `opencode_*` storage keys to neutral
+// `seofriendly_*` keys. Removes the legacy entries after copying so a curious
+// DevTools user only ever sees the neutral names going forward.
+function migrateLegacyStorage(): void {
+  try {
+    const pairs: { legacy: string; next: string }[] = [
+      { legacy: LEGACY_STORAGE_KEYS.language, next: LANGUAGE_STORAGE_KEY },
+      { legacy: LEGACY_STORAGE_KEYS.lastUrl, next: LAST_URL_STORAGE_KEY },
+      { legacy: LEGACY_STORAGE_KEYS.savedAudits, next: SAVED_AUDITS_STORAGE_KEY },
+    ];
+    for (const { legacy, next } of pairs) {
+      if (localStorage.getItem(next) !== null) {
+        localStorage.removeItem(legacy);
+        continue;
+      }
+      const value = localStorage.getItem(legacy);
+      if (value !== null) {
+        try {
+          localStorage.setItem(next, value);
+        } catch {
+          // Ignore quota/permission errors; the next setItem call will retry
+          // on a real write path.
+        }
+        localStorage.removeItem(legacy);
+      }
+    }
+  } catch {
+    // localStorage can be disabled in privacy mode; nothing to migrate.
   }
 }
 
@@ -441,13 +464,8 @@ export const useAuditStore = create<AuditState>((set, get) => {
   };
 
   return {
-    apiKey: "",
-    models: { go: [], zen: [] },
-    group: "go",
-    modelId: "",
     language: "en",
     url: "",
-    loadingModels: false,
     running: false,
     backgroundRunActive: false,
     logs: [],
@@ -459,33 +477,6 @@ export const useAuditStore = create<AuditState>((set, get) => {
     debugMode: false,
     savedAudits: [],
     activeSavedAuditId: undefined,
-
-    setApiKey: (v) => {
-      set({ apiKey: v });
-      if (typeof window !== "undefined" && v.trim()) {
-        localStorage.setItem(STORAGE_KEY, v);
-      }
-    },
-
-    setGroup: (group) => {
-      const { models, modelId } = get();
-      const list = models[group];
-      if (list.length && !list.find((m) => m.id === modelId)) {
-        set({ group, modelId: list[0].id });
-      } else {
-        set({ group });
-      }
-      if (typeof window !== "undefined") {
-        localStorage.setItem(GROUP_STORAGE_KEY, group);
-      }
-    },
-
-    setModelId: (id) => {
-      set({ modelId: id });
-      if (typeof window !== "undefined" && id) {
-        localStorage.setItem(MODEL_ID_STORAGE_KEY, id);
-      }
-    },
 
     setLanguage: (l) => {
       set({ language: l });
@@ -506,15 +497,14 @@ export const useAuditStore = create<AuditState>((set, get) => {
 
     hydrate: () => {
       if (typeof window === "undefined") return;
-      const apiKey = localStorage.getItem(STORAGE_KEY) ?? "";
-      const group = (localStorage.getItem(GROUP_STORAGE_KEY) as OpenCodeGroup) || "go";
-      const modelId = localStorage.getItem(MODEL_ID_STORAGE_KEY) ?? "";
+      migrateLegacyStorage();
       const language = (localStorage.getItem(LANGUAGE_STORAGE_KEY) as AuditLanguage) || "en";
       const url = localStorage.getItem(LAST_URL_STORAGE_KEY) ?? "";
-      set({ apiKey, group, modelId, language, url });
+      set({ language, url });
     },
 
     hydrateSavedAudits: () => {
+      if (typeof window !== "undefined") migrateLegacyStorage();
       const list = readSavedAuditsFromStorage();
       // A page reload cannot resume an in-flight SSE. Convert any stale
       // "running" entries from previous page sessions to "interrupted" and
@@ -529,41 +519,6 @@ export const useAuditStore = create<AuditState>((set, get) => {
       });
       if (mutated) writeSavedAuditsToStorage(normalized);
       set({ savedAudits: normalized });
-    },
-
-    fetchModels: async () => {
-      const { apiKey, group } = get();
-      if (!apiKey.trim()) return;
-      set({ loadingModels: true, error: "" });
-      try {
-        const res = await fetch("/api/models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load models");
-        set({ models: { go: data.go || [], zen: data.zen || [] } });
-        const { modelId, models } = get();
-        let nextModelId = modelId;
-        if (!nextModelId) {
-          const initial = models[group]?.[0]?.id || "";
-          if (initial) {
-            set({ modelId: initial });
-            nextModelId = initial;
-          }
-        }
-        localStorage.setItem(STORAGE_KEY, apiKey);
-        if (nextModelId) {
-          localStorage.setItem(MODEL_ID_STORAGE_KEY, nextModelId);
-        }
-        localStorage.setItem(GROUP_STORAGE_KEY, group);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        set({ error: msg });
-      } finally {
-        set({ loadingModels: false });
-      }
     },
 
     newAudit: () => {
@@ -694,8 +649,8 @@ export const useAuditStore = create<AuditState>((set, get) => {
     },
 
     runAudit: async () => {
-      const { apiKey, modelId, url, group, language, debugMode } = get();
-      if (!apiKey.trim() || !modelId || !url.trim()) return;
+      const { url, language, debugMode } = get();
+      if (!url.trim()) return;
 
       // If a previous run is still in flight (in the foreground or the
       // background), tear it down and persist it as interrupted before we
@@ -763,15 +718,25 @@ export const useAuditStore = create<AuditState>((set, get) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            apiKey,
-            modelId,
-            group,
             url,
             language,
             debugMode,
           }),
           signal: controller.signal,
         });
+
+        if (!res.ok) {
+          let message = `Audit request failed (HTTP ${res.status})`;
+          try {
+            const data = (await res.json()) as { error?: unknown };
+            if (typeof data?.error === "string" && data.error.trim()) {
+              message = data.error;
+            }
+          } catch {
+            // Body was not JSON; keep the generic message.
+          }
+          throw new Error(message);
+        }
 
         if (!res.body) throw new Error("No response stream");
 

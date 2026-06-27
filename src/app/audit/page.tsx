@@ -38,9 +38,9 @@ const AUDIT_ARTIFACTS = [
 ] as const;
 
 // /audit is indexable: it carries a static Russian description of what the
-// audit does and is the main public tool page. History and API key are
-// client-side and never sent to the server, so there is nothing sensitive
-// to keep out of crawlers.
+// audit does and is the main public tool page. Audit history is client-side
+// and never sent to the server, so there is nothing sensitive to keep out
+// of crawlers.
 export const metadata: Metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
@@ -123,8 +123,9 @@ export default function AuditPage() {
                   нейросеть превратит эти данные в отчёт с приоритетами.
                 </p>
                 <p className="mt-3 text-[13px] leading-relaxed text-faint">
-                  История проверок и API-ключ хранятся локально в вашем
-                  браузере. Сервер аудита не сохраняет результаты.
+                  История проверок хранится локально в вашем браузере.
+                  Обработка запускается автоматически и не требует ручной
+                  технической настройки.
                 </p>
               </div>
 

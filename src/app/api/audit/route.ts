@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { createEmitter, createKeepAlive, SSE_HEADERS } from "@/lib/sse";
 import { runAudit } from "@/lib/audit";
 import { normalizeUrl } from "@/lib/prompts";
-import type { AuditLanguage, OpenCodeGroup } from "@/lib/types";
+import type { AuditLanguage } from "@/lib/types";
+import { getServerApiKeys, pickRandomApiKey } from "@/lib/server-keys";
+import { fetchFreeZenModelIds } from "@/lib/zen-models";
 
 const HEARTBEAT_MS = 15000;
 const MAX_REQUEST_BYTES = 10_000;
@@ -29,9 +31,6 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  const apiKey = String(body.apiKey || "").trim();
-  const modelId = String(body.modelId || "").trim();
-  const group = String(body.group || "go") as OpenCodeGroup;
   const url = normalizeUrl(String(body.url || ""));
   const language = String(body.language || "en").toLowerCase() as AuditLanguage;
   // Informational only. The server always emits the same structured events
@@ -39,10 +38,40 @@ export async function POST(req: NextRequest) {
   // its display mode at any time without round-tripping.
   const debugMode = Boolean(body.debugMode);
 
-  if (!apiKey || !modelId || !url) {
+  if (!url) {
     return new Response(
-      JSON.stringify({ error: "apiKey, modelId, and url are required" }),
+      JSON.stringify({ error: "url is required" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const keys = getServerApiKeys();
+  const apiKey = pickRandomApiKey(keys);
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({
+        error: "Сервис временно недоступен. Попробуйте позже.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  let modelIds: string[];
+  try {
+    modelIds = await fetchFreeZenModelIds(apiKey);
+  } catch (err) {
+    console.error("Failed to prepare audit processing", err);
+    return new Response(
+      JSON.stringify({ error: "Не удалось подготовить аудит. Попробуйте позже." }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  if (modelIds.length === 0) {
+    return new Response(
+      JSON.stringify({
+        error: "Сервис временно недоступен. Попробуйте позже.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
 
@@ -53,7 +82,10 @@ export async function POST(req: NextRequest) {
       let lastPhase = "init";
       emit("debug", {
         message: "Audit request accepted",
-        data: { debugMode, group, language },
+        data: {
+          debugMode,
+          language,
+        },
       });
 
       // Heartbeat keeps reverse proxies / load balancers from closing an idle
@@ -71,8 +103,7 @@ export async function POST(req: NextRequest) {
       try {
         await runAudit({
           apiKey,
-          modelId,
-          group,
+          modelIds,
           url,
           language,
           emit,
@@ -82,8 +113,8 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        emit("error", { message });
+        console.error("Audit processing failed", err);
+        emit("error", { message: "Не удалось завершить аудит. Попробуйте позже." });
       } finally {
         clearInterval(heartbeat);
         controller.close();

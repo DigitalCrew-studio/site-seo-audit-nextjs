@@ -9,7 +9,7 @@ import { getEndpoint } from "@/lib/opencode";
 import { TOOLS } from "@/lib/tools";
 import { buildSystemPrompt } from "@/lib/prompts";
 import type { Emitter } from "@/lib/sse";
-import type { AuditLanguage, OpenCodeGroup } from "@/lib/types";
+import type { AuditLanguage } from "@/lib/types";
 
 const MAX_TOKENS = 16000;
 const MAX_FINAL_TOKENS = 8000;
@@ -107,8 +107,7 @@ type AuditMode = "discovery" | "final";
 
 type RunAuditParams = {
   apiKey: string;
-  modelId: string;
-  group: OpenCodeGroup;
+  modelIds: string[];
   url: string;
   language: AuditLanguage;
   emit: Emitter;
@@ -216,7 +215,7 @@ function safeTruncate(text: string, maxBytes: number): { text: string; truncated
   if (originalBytes <= maxBytes) {
     return { text, truncated: false, originalBytes };
   }
-  const note = `\n\n... [truncated from ${originalBytes} bytes before model context]`;
+  const note = `\n\n... [truncated from ${originalBytes} bytes before processing context]`;
   const targetBytes = Math.max(0, maxBytes - utf8Bytes(note));
   let low = 0;
   let high = text.length;
@@ -822,7 +821,7 @@ async function checkOneUrlForBatch(url: string): Promise<{
       redirect: "follow",
       signal: AbortSignal.timeout(8000),
       headers: {
-        "user-agent": "Mozilla/5.0 (compatible; OpenCodeSEOAudit/1.0)",
+      "user-agent": "Mozilla/5.0 (compatible; SeofriendlyAudit/1.0)",
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
@@ -1174,7 +1173,7 @@ function shapeToolResult(
       mimeType: r.mimeType ?? "image/jpeg",
       bytes: r.bytes ?? (typeof r.base64 === "string" ? r.base64.length : 0),
       omitted: true,
-      reason: "screenshot omitted from model context; refer to debug log for size",
+    reason: "screenshot omitted from processing context; refer to debug log for size",
     };
     omittedScreenshot = true;
   } else if (
@@ -1204,7 +1203,7 @@ function shapeToolResult(
         mimeType: typeof ss.mimeType === "string" ? ss.mimeType : "image/jpeg",
         bytes,
         omitted: true,
-        reason: "screenshot omitted from model context; refer to debug log for size",
+      reason: "screenshot omitted from processing context; refer to debug log for size",
       };
       if (typeof ss.profile === "string") out.profile = ss.profile;
       if (ss.viewport && typeof ss.viewport === "object") out.viewport = ss.viewport;
@@ -1582,13 +1581,13 @@ async function executeTool(
     const fullBytes = approxBytes(result);
     if (shaped.truncated) {
       emit("status", {
-        message: `Tool ${name} result truncated for model context (${shaped.bytes}B kept, ${fullBytes}B original).`,
+        message: `Tool ${name} result truncated for processing context (${shaped.bytes}B kept, ${fullBytes}B original).`,
         phase: "tools",
       });
     }
     if (shaped.omittedScreenshot) {
       emit("debug", {
-        message: "Screenshot omitted from model context",
+        message: "Screenshot omitted from processing context",
         data: { name, bytes: fullBytes, kept: shaped.bytes },
       });
     }
@@ -1626,8 +1625,71 @@ type AccumulatedToolCall = {
  * Drive a streaming chat.completions response: accumulate content + tool-call
  * deltas, emit throttled progress events, and return a final assistant
  * message that is compatible with the existing tool_calls loop.
+ *
+ * Accepts an ordered list of processing routes and tries each in turn. If a
+ * call fails before producing a successful response (no chunks, throws, or
+ * empty partial), the next route is attempted with the same messages.
  */
 async function runModelStep(
+  openai: OpenAI,
+  modelIds: string[],
+  messages: ChatCompletionMessageParam[],
+  step: number,
+  mode: AuditMode,
+  requestBytes: number,
+  modelWaitMs: number,
+  maxTokens: number,
+  signal: AbortSignal | undefined,
+  emit: Emitter,
+  setPhase: (p: string) => void
+): Promise<{
+  content: string;
+  toolCalls: AccumulatedToolCall[];
+  finishReason: string | null;
+  chunkCount: number;
+  firstChunkMs: number;
+}> {
+  if (modelIds.length === 0) {
+    throw new Error("No processing routes available");
+  }
+  let failureCount = 0;
+  for (let i = 0; i < modelIds.length; i += 1) {
+    const modelId = modelIds[i];
+    if (i > 0) {
+      emit("debug", {
+        message: `Trying fallback processing route ${i + 1}/${modelIds.length}`,
+        data: { step, mode, previousFailures: failureCount },
+      });
+    }
+    try {
+      return await runSingleModelRequest(
+        openai,
+        modelId,
+        messages,
+        step,
+        mode,
+        requestBytes,
+        modelWaitMs,
+        maxTokens,
+        signal,
+        emit,
+        setPhase
+      );
+    } catch (err) {
+      failureCount += 1;
+      if (isAborted(signal)) {
+        throw err;
+      }
+      emit("debug", {
+        message: "Processing route failed before producing a usable response",
+        data: { step, mode, failureCount },
+      });
+    }
+  }
+  throw new Error("All processing routes failed");
+}
+
+async function runSingleModelRequest(
   openai: OpenAI,
   modelId: string,
   messages: ChatCompletionMessageParam[],
@@ -1646,21 +1708,21 @@ async function runModelStep(
   chunkCount: number;
   firstChunkMs: number;
 }> {
-  const phase = mode === "final" ? "model:final report" : `model:thinking step ${step}`;
+  const phase = mode === "final" ? "processing:final report" : `processing:step ${step}`;
   setPhase(phase);
   emit("status", {
-    message: mode === "final" ? "Writing final report..." : `Thinking step ${step}...`,
+    message: mode === "final" ? "Writing final report..." : `Processing step ${step}...`,
     phase,
   });
   emit("debug", {
-    message: mode === "final" ? "Final report request started" : `Model request started (step ${step})`,
-    data: { mode, model: modelId, messages: messages.length, requestBytes, maxTokens },
+    message: mode === "final" ? "Final report request started" : `Processing request started (step ${step})`,
+    data: { mode, messages: messages.length, requestBytes, maxTokens },
   });
 
   const startedAt = Date.now();
   const timeoutError = () =>
     new Error(
-      `Model stream was idle for ${modelWaitMs}ms at thinking step ${step}`
+      `Processing stream was idle for ${modelWaitMs}ms at step ${step}`
     );
   const requestController = new AbortController();
   const abortRequest = () => requestController.abort();
@@ -1714,12 +1776,12 @@ async function runModelStep(
       if (chunkCount % STREAM_PROGRESS_EVERY_CHUNKS !== 0) return;
     }
     lastProgressAt = now;
-    setPhase(mode === "final" ? `model:final report (${chunkCount} chunks)` : `model:streaming step ${step} (${chunkCount} chunks)`);
+    setPhase(mode === "final" ? `processing:final report (${chunkCount} chunks)` : `processing:streaming step ${step} (${chunkCount} chunks)`);
     emit("status", {
       message: mode === "final"
         ? `Final report streaming (${chunkCount} chunks, ${content.length}B content so far)...`
-        : `Model streaming step ${step} (${chunkCount} chunks, ${content.length}B content so far)...`,
-      phase: mode === "final" ? "model:final report" : `model:streaming step ${step}`,
+        : `Processing step ${step} (${chunkCount} chunks, ${content.length}B content so far)...`,
+      phase: mode === "final" ? "processing:final report" : `processing:streaming step ${step}`,
     });
   };
 
@@ -1755,7 +1817,7 @@ async function runModelStep(
             if (tc.index === undefined && !warnedMissingToolCallIndex) {
               warnedMissingToolCallIndex = true;
               emit("debug", {
-                message: "Model streamed a tool_call delta without index",
+                message: "Processing stream returned a tool-call delta without index",
                 data: { step, id: tc.id },
               });
             }
@@ -1784,11 +1846,11 @@ async function runModelStep(
       finishReason = "timeout_partial";
       content = sanitizedPartial;
       emit("status", {
-        message: "Model stream went idle; returning the partial content generated so far for continuation.",
-        phase: mode === "final" ? "model:final report" : `model:streaming step ${step}`,
+        message: "Processing stream went idle; returning the partial content generated so far for continuation.",
+        phase: mode === "final" ? "processing:final report" : `processing:streaming step ${step}`,
       });
       emit("debug", {
-        message: "Model stream idle partial fallback",
+        message: "Processing stream idle partial fallback",
         data: { step, contentBytes: content.length, reason: msg },
       });
     } else {
@@ -1799,7 +1861,7 @@ async function runModelStep(
   }
 
   if (firstChunkMs === 0) {
-    throw new Error(`Model returned no chunks at thinking step ${step}`);
+    throw new Error(`Processing returned no chunks at step ${step}`);
   }
 
   if (mode === "final") {
@@ -1832,7 +1894,7 @@ async function runModelStep(
   }
 
   emit("debug", {
-    message: mode === "final" ? "Final report request finished" : `Model request finished (step ${step})`,
+    message: mode === "final" ? "Final report request finished" : `Processing request finished (step ${step})`,
     data: {
       mode,
       durationMs,
@@ -1862,8 +1924,7 @@ async function runModelStep(
  */
 export async function runAudit({
   apiKey,
-  modelId,
-  group,
+  modelIds,
   url,
   language,
   emit,
@@ -1927,7 +1988,7 @@ export async function runAudit({
 
     const openai = new OpenAI({
       apiKey,
-      baseURL: getEndpoint(group),
+      baseURL: getEndpoint(),
       timeout: OPENAI_TIMEOUT_MS,
     });
 
@@ -2037,7 +2098,7 @@ export async function runAudit({
       try {
         result = await runModelStep(
           openai,
-          modelId,
+          modelIds,
           messages,
           agentStep,
           "discovery",
@@ -2179,7 +2240,7 @@ export async function runAudit({
         }
         emit("status", {
           message: `Final report is incomplete; requesting no-tool continuation ${finalContinuationCount}/${MAX_FINAL_CONTINUATIONS}...`,
-          phase: "model:final report",
+              phase: "processing:final report",
         });
         emit("debug", {
           message: "Final report needs continuation",
@@ -2195,7 +2256,7 @@ export async function runAudit({
         const continuationRequestBytes = approxBytes({ messages: continuationMessages });
         const continuation = await runModelStep(
           openai,
-          modelId,
+          modelIds,
           continuationMessages,
           agentStep + finalContinuationCount,
           "final",
@@ -2250,7 +2311,7 @@ export async function runAudit({
           ];
           const emergency = await runModelStep(
             openai,
-            modelId,
+            modelIds,
             emergencyMessages,
             agentStep + finalContinuationCount + 1,
             "final",
@@ -2314,9 +2375,9 @@ export async function runAudit({
       lower.includes("aborterror")
     ) {
       emit("error", {
-        message: raw.includes("Model request timed out")
-          ? raw
-          : `Model request timed out after ${PER_MODEL_WAIT_MS}ms`,
+          message: raw.includes("Processing request timed out")
+            ? raw
+            : `Processing request timed out after ${PER_MODEL_WAIT_MS}ms`,
       });
       emit("debug", {
         message: "Audit timeout stats",
