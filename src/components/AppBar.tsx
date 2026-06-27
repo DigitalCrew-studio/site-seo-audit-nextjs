@@ -88,7 +88,7 @@ export function AppBar() {
             variant="full"
             height={compacted ? 48 : 64}
             preload
-            className="w-auto transition-all duration-500 ease-out"
+            className="transition-all duration-500 ease-out"
           />
         </Link>
 
@@ -120,16 +120,25 @@ export function AppBar() {
           type="button"
           onClick={() => setMenuOpen((open) => !open)}
           // touch-action: manipulation отключает 300ms tap-delay и не даёт
-          // браузеру интерпретировать touch как начало скролла — иначе на iOS
-          // микро-сдвиг пальца отменяет click и бургер «не нажимается».
-          onTouchStart={(e) => e.stopPropagation()}
-          style={{ touchAction: "manipulation" }}
+          // браузеру интерпретировать touch как начало скролла. Раньше здесь
+          // был `onTouchStart={e => e.stopPropagation()}` — в Safari iOS он
+          // глушил синтетический `click`, и бургер «не нажимался».
+          style={{
+            touchAction: "manipulation",
+            WebkitTapHighlightColor: "transparent",
+            position: "relative",
+            zIndex: 1,
+          }}
           aria-expanded={menuOpen}
           aria-controls="mobile-navigation"
           aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
           className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-paper/75 text-ink-soft transition hover:border-line-strong hover:text-ink sm:hidden"
         >
-          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {menuOpen ? (
+            <X className="h-5 w-5 pointer-events-none" aria-hidden="true" />
+          ) : (
+            <Menu className="h-5 w-5 pointer-events-none" aria-hidden="true" />
+          )}
         </button>
       </div>
 

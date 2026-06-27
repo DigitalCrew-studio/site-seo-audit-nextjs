@@ -735,7 +735,7 @@ export default function KnowledgePage() {
 
           <nav
             aria-label="Разделы базы знаний"
-            className="mt-8 rounded-2xl border border-line bg-surface/85 p-4"
+            className="mt-10 rounded-2xl border border-line bg-surface/85 p-4"
           >
             <p className="eyebrow text-faint">разделы</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -773,7 +773,7 @@ export default function KnowledgePage() {
                     <article
                       key={`${section.title}-${item.term}`}
                       id={getTermId(item.term)}
-                      className="scroll-mt-28 rounded-2xl border border-line bg-surface p-5 shadow-[0_12px_45px_rgba(27,27,25,0.045)]"
+                      className="scroll-mt-28 rounded-2xl border border-line bg-surface p-5 shadow-[0_12px_45px_rgba(27,27,25,0.045)] sm:p-6"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>

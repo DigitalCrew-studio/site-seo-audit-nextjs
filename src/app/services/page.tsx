@@ -258,7 +258,7 @@ export default function ServicesPage() {
               {SERVICE_POINTS.map((point) => (
                 <li
                   key={point}
-                  className="flex gap-3 rounded-xl border border-line bg-surface p-5 text-[13px] leading-relaxed text-muted"
+                  className="flex gap-3 rounded-xl border border-line bg-surface p-5 text-[13px] leading-relaxed text-muted sm:p-6"
                 >
                   <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-positive" />
                   <span>{point}</span>
@@ -281,7 +281,7 @@ export default function ServicesPage() {
               {PROCESS.map((step, index) => (
                 <li
                   key={step.title}
-                  className={`bg-surface p-5 ${index === 0 ? "bg-[radial-gradient(circle_at_15%_0%,rgba(180,83,9,0.16),transparent_40%),var(--color-surface)]" : ""}`}
+                  className={`bg-surface p-5 sm:p-6 ${index === 0 ? "bg-[radial-gradient(circle_at_15%_0%,rgba(180,83,9,0.16),transparent_40%),var(--color-surface)]" : ""}`}
                 >
                   <h3 className="text-[14px] font-semibold text-ink">
                     {step.title}

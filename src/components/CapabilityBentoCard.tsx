@@ -26,7 +26,7 @@ export function CapabilityBentoCard({
     <li
       tabIndex={0}
       aria-label={`${cap.title}: ${cap.description}`}
-      className={`card-spotlight group relative min-h-[10rem] overflow-hidden rounded-xl border p-5 transition duration-300 hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-[0_18px_60px_rgba(27,27,25,0.10)] focus:-translate-y-0.5 focus:border-accent/30 focus:shadow-[0_18px_60px_rgba(27,27,25,0.10)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/20 ${tone.card} ${
+      className={`card-spotlight group relative min-h-[10rem] overflow-hidden rounded-xl border p-5 transition duration-300 hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-[0_18px_60px_rgba(27,27,25,0.10)] focus:-translate-y-0.5 focus:border-accent/30 focus:shadow-[0_18px_60px_rgba(27,27,25,0.10)] focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/20 sm:p-6 ${tone.card} ${
         cap.featured ? "md:col-span-2 md:min-h-[13rem]" : ""
       }`}
     >

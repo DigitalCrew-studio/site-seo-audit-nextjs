@@ -6,7 +6,7 @@ type Variant = "primary" | "secondary";
 
 const base =
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-lg whitespace-nowrap " +
-  "min-h-[3rem] px-4 py-2.5 text-sm transition " +
+  "min-h-[3rem] px-5 py-2.5 text-sm transition " +
   "disabled:cursor-not-allowed disabled:opacity-50 " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20 focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
 

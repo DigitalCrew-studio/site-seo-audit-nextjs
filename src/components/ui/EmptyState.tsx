@@ -18,7 +18,7 @@ export function EmptyState({
   return (
     <div
       className={[
-        "rounded-xl border border-dashed border-line bg-paper/45 px-5 py-6 text-center",
+        "rounded-xl border border-dashed border-line bg-paper/45 p-5 text-center sm:p-6",
         className,
       ]
         .filter(Boolean)

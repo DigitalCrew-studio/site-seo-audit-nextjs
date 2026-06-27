@@ -11,7 +11,7 @@ export function ReportCard() {
   if (!report) return null;
 
   return (
-    <Panel className="flex flex-col items-start justify-between gap-4 border-positive/30 bg-positive/5 px-5 py-4 sm:flex-row sm:items-center">
+    <Panel className="flex flex-col items-start justify-between gap-4 border-positive/30 bg-positive/5 p-5 sm:p-6 sm:flex-row sm:items-center">
       <div className="flex items-center gap-3">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-positive/10 text-positive">
           <CheckCircle2 className="h-4 w-4" />

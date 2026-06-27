@@ -292,18 +292,18 @@ export default function HomePage() {
           </section>
 
           {/* Proof stats */}
-          <section className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_70px_rgba(27,27,25,0.06)] sm:grid-cols-4">
+          <section className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_70px_rgba(27,27,25,0.06)] sm:grid-cols-4">
             {PROOF.map((stat, index) => (
-              <div
-                key={stat.label}
-                className={`soft-sheen relative flex flex-col gap-1 overflow-hidden bg-surface px-5 py-5 transition duration-300 hover:-translate-y-0.5 ${
-                  index === 0
-                    ? "bg-[radial-gradient(circle_at_15%_0%,rgba(180,83,9,0.18),transparent_42%),var(--color-surface)]"
-                    : index === 2
-                      ? "bg-[radial-gradient(circle_at_100%_0%,rgba(21,128,61,0.14),transparent_44%),var(--color-surface)]"
-                      : ""
-                }`}
-              >
+                <div
+                  key={stat.label}
+                  className={`soft-sheen relative flex flex-col gap-1 overflow-hidden bg-surface p-5 transition duration-300 hover:-translate-y-0.5 ${
+                    index === 0
+                      ? "bg-[radial-gradient(circle_at_15%_0%,rgba(180,83,9,0.18),transparent_42%),var(--color-surface)]"
+                      : index === 2
+                        ? "bg-[radial-gradient(circle_at_100%_0%,rgba(21,128,61,0.14),transparent_44%),var(--color-surface)]"
+                        : ""
+                  }`}
+                >
                 <span className="font-mono text-2xl font-semibold tracking-tight text-ink">
                   {stat.value}
                 </span>
@@ -404,7 +404,7 @@ export default function HomePage() {
                 return (
                   <li
                     key={step.title}
-                    className={`relative flex flex-col gap-3 overflow-hidden bg-surface p-5 transition duration-300 hover:-translate-y-0.5 ${
+                    className={`relative flex flex-col gap-3 overflow-hidden bg-surface p-5 transition duration-300 hover:-translate-y-0.5 sm:p-6 ${
                       index === 1
                         ? "bg-[radial-gradient(circle_at_80%_0%,rgba(180,83,9,0.16),transparent_38%),var(--color-surface)]"
                         : index === 3
@@ -443,7 +443,7 @@ export default function HomePage() {
                 return (
                   <li
                     key={d.title}
-                    className={`soft-sheen flex flex-col gap-2 rounded-xl border border-line bg-surface p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_60px_rgba(27,27,25,0.08)] ${
+                    className={`soft-sheen flex flex-col gap-2 rounded-xl border border-line bg-surface p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_60px_rgba(27,27,25,0.08)] sm:p-6 ${
                       index === 0
                         ? "border-accent/20 bg-[radial-gradient(circle_at_18%_18%,rgba(180,83,9,0.18),transparent_36%),var(--color-accent-soft)]"
                         : index === 2
@@ -494,7 +494,7 @@ export default function HomePage() {
                 </li>
               </ul>
             </div>
-            <div className="relative min-w-0 rounded-xl border border-line bg-paper/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+            <div className="relative min-w-0 rounded-xl border border-line bg-paper/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] sm:p-6">
               <p className="font-mono text-[12px] font-medium text-faint">
                 Фрагмент карты обхода
               </p>
@@ -568,7 +568,7 @@ export default function HomePage() {
           </section>
 
           {/* Final CTA */}
-          <section className="mt-14 flex flex-col items-start gap-4 rounded-2xl border border-ink bg-ink p-8 text-paper sm:flex-row sm:items-center sm:justify-between sm:p-10">
+          <section className="mt-14 flex flex-col items-start gap-4 rounded-2xl border border-ink bg-ink p-6 text-paper sm:flex-row sm:items-center sm:justify-between sm:p-8">
             <div className="max-w-xl">
               <h2 className="text-2xl font-semibold tracking-tight">
                 Запустите бесплатный SEO-аудит за&nbsp;пару&nbsp;минут

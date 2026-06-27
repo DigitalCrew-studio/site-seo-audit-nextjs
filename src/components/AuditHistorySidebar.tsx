@@ -3,12 +3,29 @@
 import type { ComponentProps, MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { FileClock, Plus, Trash2, Globe2, Radio, Square } from "lucide-react";
+import {
+  FileClock,
+  Plus,
+  Trash2,
+  Globe2,
+  Radio,
+  Square,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import type { SavedAudit, SavedAuditStatus } from "@/store/auditStore";
 import { Badge, Panel } from "@/components/ui";
 
 const LOCALE = "ru-RU";
+
+function groupKeyForAudit(audit: SavedAudit): string {
+  return (audit.domain || audit.title || audit.url || "").toLowerCase();
+}
+
+function groupLabelForAudit(audit: SavedAudit): string {
+  return audit.domain || audit.title || audit.url;
+}
 
 function formatDateTime(iso: string): string {
   try {
@@ -224,11 +241,83 @@ function SavedAuditCard({
   );
 }
 
+function GroupSection({
+  label,
+  count,
+  summary,
+  expanded,
+  forcedExpanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  summary: { status: SavedAuditStatus; label: string };
+  expanded: boolean;
+  forcedExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const isOpen = expanded || forcedExpanded;
+  const Chevron = isOpen ? ChevronDown : ChevronRight;
+  return (
+    <li className="rounded-lg border border-line bg-surface/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        disabled={forcedExpanded}
+        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${
+          forcedExpanded
+            ? "cursor-default"
+            : "hover:bg-paper focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/15"
+        }`}
+      >
+        <Chevron
+          className={`h-3.5 w-3.5 shrink-0 text-muted transition ${
+            forcedExpanded ? "opacity-70" : ""
+          }`}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">
+          {label}
+        </span>
+        <Badge tone="neutral" className="px-1.5 py-0.5">
+          {count}
+        </Badge>
+        <Badge tone={statusTone(summary.status)} className="px-1.5 py-0.5">
+          {summary.label}
+        </Badge>
+      </button>
+      {isOpen ? (
+        <ul className="space-y-1.5 border-t border-line/70 px-2 py-2">
+          {children}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+function summarizeGroup(audits: SavedAudit[]): {
+  status: SavedAuditStatus;
+  label: string;
+} {
+  if (audits.some((a) => a.status === "running")) {
+    return { status: "running", label: "Идёт" };
+  }
+  if (audits.some((a) => a.status === "failed")) {
+    return { status: "failed", label: "Ошибка" };
+  }
+  if (audits.some((a) => a.status === "interrupted")) {
+    return { status: "interrupted", label: "Прервано" };
+  }
+  return { status: "completed", label: "Готово" };
+}
+
 export function AuditHistorySidebar() {
   const {
     savedAudits,
     activeSavedAuditId,
-    running,
     backgroundRunActive,
     newAudit,
     loadSavedAudit,
@@ -239,7 +328,6 @@ export function AuditHistorySidebar() {
     useShallow((s) => ({
       savedAudits: s.savedAudits,
       activeSavedAuditId: s.activeSavedAuditId,
-      running: s.running,
       backgroundRunActive: s.backgroundRunActive,
       newAudit: s.newAudit,
       loadSavedAudit: s.loadSavedAudit,
@@ -261,6 +349,48 @@ export function AuditHistorySidebar() {
     [savedAudits]
   );
 
+  const groups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        audits: SavedAudit[];
+        latestUpdatedAt: number;
+      }
+    >();
+    for (const audit of sorted) {
+      const key = groupKeyForAudit(audit) || "_";
+      const label = groupLabelForAudit(audit) || "Без адреса";
+      const existing = map.get(key);
+      const updatedAt = new Date(audit.updatedAt).getTime();
+      if (existing) {
+        existing.audits.push(audit);
+        if (updatedAt > existing.latestUpdatedAt) {
+          existing.latestUpdatedAt = updatedAt;
+          existing.label = label;
+        }
+      } else {
+        map.set(key, { key, label, audits: [audit], latestUpdatedAt: updatedAt });
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) => b.latestUpdatedAt - a.latestUpdatedAt
+    );
+  }, [sorted]);
+
+  const activeGroupKey = useMemo(() => {
+    if (!activeSavedAuditId) return null;
+    const active = sorted.find((a) => a.id === activeSavedAuditId);
+    if (!active) return null;
+    return groupKeyForAudit(active) || "_";
+  }, [activeSavedAuditId, sorted]);
+
+  const [collapsedKeys, setCollapsedKeys] = useState<Record<string, boolean>>({});
+  const toggleGroup = (key: string) => {
+    setCollapsedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   // The audit that is currently streaming is the one with status === "running".
   // It lives "in the background" if the user is viewing a different audit.
   const liveRun = sorted.find((a) => a.status === "running");
@@ -273,7 +403,9 @@ export function AuditHistorySidebar() {
         <div className="flex items-center gap-2">
           <FileClock className="h-4 w-4 text-muted" />
           <h2 className="text-sm font-semibold text-ink">Аудиты</h2>
-          {sorted.length > 0 ? <Badge tone="neutral">{sorted.length}</Badge> : null}
+          {groups.length > 0 ? (
+            <Badge tone="neutral">{groups.length}</Badge>
+          ) : null}
         </div>
         <button
           type="button"
@@ -286,23 +418,42 @@ export function AuditHistorySidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {sorted.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-[13px] leading-relaxed text-muted">
             История аудитов появится после первого запуска.
           </p>
         ) : (
           <ul className="space-y-2">
-            {sorted.map((audit) => (
-              <SavedAuditCard
-                key={audit.id}
-                audit={audit}
-                isActive={audit.id === activeSavedAuditId}
-                isLiveRunInBackground={isLiveRunInBackground && audit.id === liveRun?.id}
-                onOpen={loadSavedAudit}
-                onDelete={deleteSavedAudit}
-                onStopRun={() => cancelBackgroundRun()}
-              />
-            ))}
+            {groups.map((group) => {
+              const isActiveGroup = group.key === activeGroupKey;
+              const expanded = !collapsedKeys[group.key];
+              const summary = summarizeGroup(group.audits);
+              return (
+                <GroupSection
+                  key={group.key}
+                  label={group.label}
+                  count={group.audits.length}
+                  summary={summary}
+                  expanded={expanded}
+                  forcedExpanded={isActiveGroup}
+                  onToggle={() => toggleGroup(group.key)}
+                >
+                  {group.audits.map((audit) => (
+                    <SavedAuditCard
+                      key={audit.id}
+                      audit={audit}
+                      isActive={audit.id === activeSavedAuditId}
+                      isLiveRunInBackground={
+                        isLiveRunInBackground && audit.id === liveRun?.id
+                      }
+                      onOpen={loadSavedAudit}
+                      onDelete={deleteSavedAudit}
+                      onStopRun={() => cancelBackgroundRun()}
+                    />
+                  ))}
+                </GroupSection>
+              );
+            })}
           </ul>
         )}
       </div>

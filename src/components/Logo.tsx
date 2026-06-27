@@ -2,6 +2,13 @@ import Image, { type ImageProps } from "next/image";
 
 type LogoProps = {
   variant?: "full" | "small";
+  /**
+   * Rendered height in pixels. The width is derived from the asset's
+   * intrinsic aspect ratio. Sizing is applied to a wrapper element via
+   * `style`, and `<Image fill>` fills the wrapper — this keeps the size
+   * logic in CSS without overriding only one intrinsic dimension on the
+   * `<img>` itself, which is what triggers Next.js' aspect-ratio warning.
+   */
   height: number;
   className?: string;
   /**
@@ -10,7 +17,6 @@ type LogoProps = {
    */
   preload?: boolean;
   alt?: string;
-  style?: React.CSSProperties;
 };
 
 const SIZES = {
@@ -24,28 +30,38 @@ export function Logo({
   className,
   preload,
   alt = "Seofriendly",
-  style,
 }: LogoProps) {
   const asset = SIZES[variant];
   const width = Math.round((asset.width / asset.height) * height);
-  // Intrinsic `width`/`height` set the aspect ratio for layout reservation;
-  // the inline `style.height` controls the actually-rendered size. This
-  // way the caller can pass a single `height` and have it drive both,
-  // without relying on Tailwind breakpoints that would drift out of sync.
-  const imageStyle: React.CSSProperties = { height, ...style };
+  // Render the size through a wrapper (`<span>`) and let `<Image fill>`
+  // occupy it. The intrinsic attributes match the rendered size, so the
+  // browser and Next.js both see consistent width/height values and do
+  // not flag a one-sided CSS override on the underlying `<img>`.
   return (
-    <Image
-      src={asset.src}
-      alt={alt}
-      width={width}
-      height={height}
-      preload={preload}
+    <span
       className={className}
-      sizes={`${width}px`}
-      style={imageStyle}
-    />
+      style={{
+        position: "relative",
+        display: "inline-block",
+        width,
+        height,
+      }}
+      aria-hidden={alt === "" ? true : undefined}
+    >
+      <Image
+        src={asset.src}
+        alt={alt}
+        preload={preload}
+        sizes={`${width}px`}
+        fill
+        style={{ objectFit: "contain" }}
+      />
+    </span>
   );
 }
 
 // Re-export the Image type so consumers can compose with the same types.
 export type { ImageProps as LogoImageProps };
+
+
+

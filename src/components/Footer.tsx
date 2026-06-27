@@ -30,7 +30,7 @@ const CONTACT_LINKS = [
 export function Footer() {
   return (
     <footer className="border-t border-line bg-surface/70">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
         <div className="grid gap-8 md:grid-cols-[1.35fr_0.8fr_0.8fr_0.8fr_0.8fr]">
           <div className="max-w-md">
             <Link
@@ -38,7 +38,7 @@ export function Footer() {
               aria-label="Seofriendly — на главную"
               className="inline-flex items-center rounded-md transition hover:opacity-80"
             >
-              <Logo variant="full" height={32} className="w-auto transition-all duration-500 ease-out" />
+              <Logo variant="full" height={32} className="transition-all duration-500 ease-out" />
             </Link>
             <p className="mt-3 text-sm leading-relaxed text-muted">
               Бесплатный SEO-аудит сайта нейросетью: технические факты,

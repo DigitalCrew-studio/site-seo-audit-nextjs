@@ -136,13 +136,13 @@ export default function ContactsPage() {
             </p>
           </section>
 
-          <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+          <ul className="mt-8 grid gap-3 sm:grid-cols-2">
             {CHANNELS.map((channel) => {
               const Icon = channel.icon;
               return (
                 <li
                   key={channel.title}
-                  className="rounded-xl border border-line bg-surface p-5"
+                  className="rounded-xl border border-line bg-surface p-5 sm:p-6"
                 >
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
                     <Icon className="h-4.5 w-4.5" />

@@ -119,7 +119,7 @@ export default function AboutPage() {
             {PRINCIPLES.map((item) => (
               <li
                 key={item.title}
-                className="rounded-xl border border-line bg-surface p-5"
+                className="rounded-xl border border-line bg-surface p-5 sm:p-6"
               >
                 <h3 className="text-[14px] font-semibold text-ink">
                   {item.title}

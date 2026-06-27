@@ -102,7 +102,7 @@ export default function AuditPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <div className="paper-grid">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
           <Breadcrumbs items={[{ label: "Аудит" }]} className="mb-3" />
           <PageHeader
             title="Аудит сайта"
