@@ -4,7 +4,8 @@
 // Дефолты держат локальный dev работоспособным без заполненного .env.
 
 const DEFAULT_SITE_URL = "https://seofrendly.ru";
-const DEFAULT_BRAND_EMAIL = "Временно недоступно";
+const DEFAULT_BRAND_EMAIL = "mail.seofriendly@proton.me";
+const DEFAULT_BRAND_TELEGRAM_USERNAME = "BBYagah";
 
 function readSiteUrl(): string {
   const raw = (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim();
@@ -23,6 +24,9 @@ function readBrandEmail(): string {
 
 export const SITE_URL = readSiteUrl();
 export const BRAND_EMAIL = readBrandEmail();
+export const BRAND_TELEGRAM_USERNAME = DEFAULT_BRAND_TELEGRAM_USERNAME;
+export const BRAND_TELEGRAM_URL = `https://t.me/${BRAND_TELEGRAM_USERNAME}`;
+export const BRAND_SOCIAL_URLS = [BRAND_TELEGRAM_URL] as const;
 
 // Единая фабрика hreflang-languages. Возвращает объект, пригодный для
 // Next.js Metadata.alternates.languages: ru-RU с самоссылающимся URL плюс

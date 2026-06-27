@@ -1,62 +1,73 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL, withHreflang } from "@/lib/site";
+
+const LAST_MODIFIED = new Date(
+  process.env.NEXT_PUBLIC_SITE_LASTMOD ?? "2026-06-27T00:00:00.000Z"
+);
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
   return [
     {
       url: `${SITE_URL}/`,
-      lastModified: now,
+      lastModified: LAST_MODIFIED,
       changeFrequency: "weekly",
       priority: 1.0,
       alternates: {
-        languages: {
-          "ru-RU": `${SITE_URL}/`,
-        },
+        languages: withHreflang("/"),
       },
     },
     {
       url: `${SITE_URL}/audit`,
-      lastModified: now,
+      lastModified: LAST_MODIFIED,
       changeFrequency: "monthly",
       priority: 0.8,
       alternates: {
-        languages: {
-          "ru-RU": `${SITE_URL}/audit`,
-        },
+        languages: withHreflang("/audit"),
+      },
+    },
+    {
+      url: `${SITE_URL}/services`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.7,
+      alternates: {
+        languages: withHreflang("/services"),
       },
     },
     {
       url: `${SITE_URL}/about`,
-      lastModified: now,
+      lastModified: LAST_MODIFIED,
       changeFrequency: "monthly",
       priority: 0.5,
       alternates: {
-        languages: {
-          "ru-RU": `${SITE_URL}/about`,
-        },
+        languages: withHreflang("/about"),
+      },
+    },
+    {
+      url: `${SITE_URL}/knowledge`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.6,
+      alternates: {
+        languages: withHreflang("/knowledge"),
       },
     },
     {
       url: `${SITE_URL}/contacts`,
-      lastModified: now,
+      lastModified: LAST_MODIFIED,
       changeFrequency: "yearly",
       priority: 0.5,
       alternates: {
-        languages: {
-          "ru-RU": `${SITE_URL}/contacts`,
-        },
+        languages: withHreflang("/contacts"),
       },
     },
     {
       url: `${SITE_URL}/privacy`,
-      lastModified: now,
+      lastModified: LAST_MODIFIED,
       changeFrequency: "yearly",
       priority: 0.3,
       alternates: {
-        languages: {
-          "ru-RU": `${SITE_URL}/privacy`,
-        },
+        languages: withHreflang("/privacy"),
       },
     },
   ];

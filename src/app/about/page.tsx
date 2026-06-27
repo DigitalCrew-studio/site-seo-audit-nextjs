@@ -103,7 +103,11 @@ export default function AboutPage() {
               отчёт с приоритетами и доказательствами.
             </p>
             <p>
-              Сервис не требует регистрации, доступа к Search Console или
+              Сервис не требует регистрации, доступа к{" "}
+              <a className="text-ink underline" href="/knowledge#gsc">
+                Search Console
+              </a>{" "}
+              или
               выгрузок. Достаточно открытого URL.
             </p>
           </section>
@@ -133,10 +137,34 @@ export default function AboutPage() {
             </h2>
             <p className="mt-3 text-[14px] leading-relaxed text-muted">
               12 направлений диагностики и более 60 конкретных проверок: HTTP-коды
-              и редиректы, sitemap.xml и robots.txt, canonical, мета-теги,
-              иерархия заголовков, структурированные данные, скорость и Core Web
-              Vitals, адаптивность, HTTPS и заголовки безопасности, изображения и
-              Open Graph, аналитика, hreflang. Полный список — на главной и в
+              и редиректы,{" "}
+              <a className="text-ink underline" href="/knowledge#sitemap-xml">
+                sitemap.xml
+              </a>{" "}
+              и{" "}
+              <a className="text-ink underline" href="/knowledge#robots-txt">
+                robots.txt
+              </a>{", "}
+              <a className="text-ink underline" href="/knowledge#canonical">
+                canonical
+              </a>{", "}
+              мета-теги, иерархия заголовков,{" "}
+              <a className="text-ink underline" href="/knowledge#structured-data-term">
+                структурированные данные
+              </a>{", "}
+              скорость и{" "}
+              <a className="text-ink underline" href="/knowledge#core-web-vitals">
+                Core Web Vitals
+              </a>{", "}
+              адаптивность, HTTPS и заголовки безопасности, изображения и{" "}
+              <a className="text-ink underline" href="/knowledge#open-graph">
+                Open Graph
+              </a>{", "}
+              аналитика,{" "}
+              <a className="text-ink underline" href="/knowledge#hreflang">
+                hreflang
+              </a>.
+              {" "}Полный список — на главной и в
               файле <a className="text-ink underline" href="/llms.txt">llms.txt</a>.
             </p>
 

@@ -19,16 +19,11 @@ import {
   type Capability,
 } from "@/lib/capabilities";
 import { CapabilityBentoCard } from "@/components/CapabilityBentoCard";
-import { SITE_URL, BRAND_EMAIL } from "@/lib/site";
+import { SITE_URL, BRAND_EMAIL, BRAND_SOCIAL_URLS } from "@/lib/site";
 
 const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
-  "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, редиректов, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
-// Профили бренда в соцсетях и на внешних площадках. Попадают в Organization.sameAs
-// (schema.org) и в footer. Заполняется по мере появления каналов; пустой массив
-// означает «пока нигде» — поле sameAs не рендерится, чтобы не светить пустоту.
-const SOCIAL_URLS: readonly string[] = [];
-
+  "Seofriendly — бесплатный SEO-аудит сайта нейросетью: sitemap.xml, robots.txt, canonical, мета-теги, скорость и адаптивность.";
 export const metadata: Metadata = {
   title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
   description: SITE_DESCRIPTION,
@@ -202,7 +197,7 @@ function buildStructuredData() {
           url: `${SITE_URL}/contacts`,
           availableLanguage: ["Russian"],
         },
-        ...(SOCIAL_URLS.length > 0 ? { sameAs: SOCIAL_URLS } : {}),
+        sameAs: BRAND_SOCIAL_URLS,
       },
       {
         "@type": "WebApplication",
@@ -358,6 +353,16 @@ export default function HomePage() {
                   <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                 </LinkButton>
               </div>
+              <p className="mt-4 text-[13px] leading-relaxed text-muted">
+                Расшифровки терминов вроде sitemap.xml, canonical, Core Web
+                Vitals и HSTS собраны в{" "}
+                <a
+                  href="/knowledge"
+                  className="font-medium text-ink underline underline-offset-2 hover:text-accent"
+                >
+                  базе знаний SEO
+                </a>.
+              </p>
               <div
                 aria-hidden="true"
                 className="pointer-events-none relative mt-1 min-h-[220px] sm:mt-auto sm:min-h-[260px] lg:min-h-[320px]"
@@ -368,7 +373,6 @@ export default function HomePage() {
                   fill
                   sizes="(min-width: 1024px) 483px, (min-width: 640px) 300px, calc(100vw - 82px)"
                   className="scale-115 object-contain object-center -translate-y-3 sm:-translate-x-5 sm:-translate-y-5 sm:scale-125 lg:-translate-x-10 lg:-translate-y-8 lg:scale-135 lg:object-left-bottom"
-                  loading="eager"
                 />
               </div>
             </div>
@@ -509,6 +513,31 @@ export default function HomePage() {
                 Пример карты обхода из реального аудита. Полный список страниц
                 и HTTP-следов попадает в отчёт.
               </p>
+            </div>
+          </section>
+
+          {/* Services CTA */}
+          <section className="mt-14 overflow-hidden rounded-2xl border border-line bg-[radial-gradient(circle_at_12%_20%,rgba(180,83,9,0.18),transparent_30%),linear-gradient(135deg,var(--color-ink),#34342f)] p-6 text-paper shadow-[0_18px_80px_rgba(27,27,25,0.12)] sm:p-8">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="max-w-2xl">
+                <p className="eyebrow text-paper/55">услуги</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+                  Нужна помощь с внедрением SEO-правок?
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-paper/70">
+                  Если аудит нашёл проблемы с индексацией, мета-данными,
+                  canonical, structured data или скоростью, можно заказать
+                  настройку SEO на вашем сайте.
+                </p>
+              </div>
+              <LinkButton
+                href="/services"
+                variant="inverse"
+                className="group w-full sm:w-auto"
+              >
+                Посмотреть услуги
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </LinkButton>
             </div>
           </section>
 

@@ -195,6 +195,11 @@
 }
 
 .card-spotlight-glow {
+  background: radial-gradient(
+    360px circle at 50% 28%,
+    var(--card-spotlight),
+    transparent 65%
+  );
   transition: opacity 220ms ease, background 60ms linear;
 }
 

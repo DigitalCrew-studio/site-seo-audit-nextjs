@@ -23,7 +23,7 @@ const plexMono = IBM_Plex_Mono({
 
 const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
-  "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
+  "Seofriendly — бесплатный SEO-аудит сайта нейросетью: sitemap.xml, robots.txt, canonical, мета-теги, скорость и адаптивность.";
 
 // Twitter handle — заполни здесь при появлении аккаунта. Сейчас явно
 // пусто, чтобы поля не рендерились как @undefined.

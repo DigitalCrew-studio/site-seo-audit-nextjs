@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
-import { Mail, MessageSquare, Globe } from "lucide-react";
+import { Mail, MessageSquare, Globe, Send } from "lucide-react";
 import { Breadcrumbs, PageHeader } from "@/components/ui";
-import { SITE_URL, BRAND_EMAIL, withHreflang } from "@/lib/site";
+import {
+  SITE_URL,
+  BRAND_EMAIL,
+  BRAND_TELEGRAM_URL,
+  withHreflang,
+} from "@/lib/site";
 import {
   pageBreadcrumb,
   webPageSchema,
@@ -73,6 +78,13 @@ const CHANNELS = [
     href: SITE_URL,
     text: "Главная страница, точка входа в аудит и справочные материалы.",
   },
+  {
+    icon: Send,
+    title: "Telegram для сотрудничества",
+    value: "@BBYagah",
+    href: BRAND_TELEGRAM_URL,
+    text: "Быстрый канал для партнёрств, интеграций и коммерческих предложений.",
+  },
 ];
 
 const FAQ = [
@@ -86,7 +98,7 @@ const FAQ = [
   },
   {
     q: "Есть ли у сервиса аккаунт в соцсетях?",
-    a: "Каналы появятся позже. Пока основной и единственный канал связи — электронная почта.",
+    a: `Да. Для сотрудничества доступен Telegram @BBYagah, для остальных обращений — почта ${BRAND_EMAIL}.`,
   },
   {
     q: "Как быстро вы отвечаете?",
@@ -140,7 +152,9 @@ export default function ContactsPage() {
                   </h2>
                   <a
                     href={channel.href}
-                    className="mt-1 inline-block text-[14px] font-medium text-ink underline-offset-2 hover:underline"
+                    className="mt-1 inline-flex min-h-[48px] items-center text-[14px] font-medium text-ink underline-offset-2 hover:underline"
+                    target={channel.href.startsWith("http") ? "_blank" : undefined}
+                    rel={channel.href.startsWith("http") ? "noreferrer" : undefined}
                   >
                     {channel.value}
                   </a>

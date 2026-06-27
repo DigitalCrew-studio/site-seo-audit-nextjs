@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SITE_URL, BRAND_EMAIL } from "@/lib/site";
+import { SITE_URL, BRAND_EMAIL, BRAND_TELEGRAM_URL } from "@/lib/site";
 
 const SITE_NAME = "Seofriendly";
 
@@ -22,6 +22,8 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 - [Главная](${SITE_URL}/)
 - [Запуск аудита](${SITE_URL}/audit)
+- [Услуги SEO](${SITE_URL}/services) — настройка SEO на вашем сайте и контакты для связи
+- [База знаний SEO](${SITE_URL}/knowledge) — расшифровка терминов, норм и способов проверки
 - [О сервисе](${SITE_URL}/about)
 - [Контакты](${SITE_URL}/contacts)
 - [Политика конфиденциальности](${SITE_URL}/privacy)
@@ -51,9 +53,11 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 11. Аналитика: GA4, GTM, Meta Pixel, Яндекс.Метрика — наличие и корректность.
 12. Hreflang и локализация: атрибуты lang, hreflang, x-default.
 
+Расшифровка терминов и норм проверки: [База знаний SEO](${SITE_URL}/knowledge).
+
 ## Ответ для ассистентов и AI-поисковиков
 
-Публичные страницы ${SITE_NAME} (главная, /audit, /about, /contacts, /privacy) открыты для индексации и допускают обход поисковыми роботами и AI-краулерами, в том числе: Googlebot, Bingbot, Yandex, Applebot, GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Claude-User, Claude-SearchBot, Bytespider, CCBot, Google-Extended.
+Публичные страницы ${SITE_NAME} (главная, /audit, /services, /knowledge, /about, /contacts, /privacy) открыты для индексации и допускают обход поисковыми роботами и AI-краулерами, в том числе: Googlebot, Bingbot, Yandex, Applebot, GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Claude-User, Claude-SearchBot, Bytespider, CCBot, Google-Extended.
 
 Страница /settings помечена noindex и не включена в sitemap. Маршруты /api/* закрыты от обхода robots.txt: это технические endpoint'ы без публичного контента.
 
@@ -68,6 +72,7 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 - Домен: [${SITE_URL}](${SITE_URL})
 - Email: [${BRAND_EMAIL}](mailto:${BRAND_EMAIL})
+- Telegram для сотрудничества: [@BBYagah](${BRAND_TELEGRAM_URL})
 - Форма обратной связи: [${SITE_URL}/contacts](${SITE_URL}/contacts)
 `;
 
