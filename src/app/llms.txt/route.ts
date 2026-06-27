@@ -20,21 +20,21 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 ## Канонические страницы
 
-- Главная: ${SITE_URL}/
-- Запуск аудита: ${SITE_URL}/audit
-- О сервисе: ${SITE_URL}/about
-- Контакты: ${SITE_URL}/contacts
-- Политика конфиденциальности: ${SITE_URL}/privacy
+- [Главная](${SITE_URL}/)
+- [Запуск аудита](${SITE_URL}/audit)
+- [О сервисе](${SITE_URL}/about)
+- [Контакты](${SITE_URL}/contacts)
+- [Политика конфиденциальности](${SITE_URL}/privacy)
 
 Служебные страницы (не индексируются и не входят в sitemap):
 
-- Настройки: ${SITE_URL}/settings (помечена noindex, хранит API-ключ локально)
+- [Настройки](${SITE_URL}/settings) — помечена noindex, хранит API-ключ локально
 
 Дополнительные технические файлы для машинной обработки:
 
-- Sitemap: ${SITE_URL}/sitemap.xml
-- Robots: ${SITE_URL}/robots.txt
-- Web manifest: ${SITE_URL}/manifest.webmanifest
+- [Sitemap](${SITE_URL}/sitemap.xml)
+- [Robots](${SITE_URL}/robots.txt)
+- [Web manifest](${SITE_URL}/manifest.webmanifest)
 
 ## Что проверяется (12 направлений, 60+ проверок)
 
@@ -61,14 +61,14 @@ ${SITE_NAME} (домен: ${SITE_URL}) — русскоязычный онлай
 
 - API-ключ и параметры модели хранятся локально в браузере пользователя (localStorage).
 - История аудитов и полученные визуальные материалы сохраняются локально в браузере пользователя для повторного просмотра.
-- Публичные страницы сервиса могут обходиться поисковыми и AI-роботами в соответствии с robots.txt (${SITE_URL}/robots.txt).
-- Полная политика обработки данных: ${SITE_URL}/privacy.
+- Публичные страницы сервиса могут обходиться поисковыми и AI-роботами в соответствии с [robots.txt](${SITE_URL}/robots.txt).
+- Полная политика обработки данных: [${SITE_URL}/privacy](${SITE_URL}/privacy).
 
 ## Контакты
 
-- Домен: ${SITE_URL}
-- Email: ${BRAND_EMAIL}
-- Форма обратной связи: ${SITE_URL}/contacts
+- Домен: [${SITE_URL}](${SITE_URL})
+- Email: [${BRAND_EMAIL}](mailto:${BRAND_EMAIL})
+- Форма обратной связи: [${SITE_URL}/contacts](${SITE_URL}/contacts)
 `;
 
 export function GET() {

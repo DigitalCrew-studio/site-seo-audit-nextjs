@@ -39,3 +39,6 @@ export type { EmptyStateProps } from "./EmptyState";
 
 export { SwitchRow } from "./SwitchRow";
 export type { SwitchRowProps } from "./SwitchRow";
+
+export { Breadcrumbs } from "./Breadcrumbs";
+export type { BreadcrumbsProps, BreadcrumbItem } from "./Breadcrumbs";

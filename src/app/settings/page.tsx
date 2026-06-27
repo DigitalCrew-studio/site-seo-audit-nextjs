@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/SettingsForm";
+import { ApiKeyGuide } from "@/components/ApiKeyGuide";
 import { Badge, PageHeader, Panel } from "@/components/ui";
 import { SITE_URL } from "@/lib/site";
 
@@ -22,6 +23,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ru_RU",
     siteName: SITE_NAME,
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: `Настройки — ${SITE_NAME}`,
+      },
+    ],
   },
   robots: {
     index: false,
@@ -39,11 +48,11 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen">
       <div className="paper-grid">
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
           <PageHeader
             eyebrow="конфигурация"
             title="Настройки Seofriendly"
-            description="Локальная конфигурация аудита сейчас и место для аккаунта пользователя позже."
+            description="Локальная конфигурация аудита: API-ключ, провайдер, модель, язык отчёта. Всё хранится только в вашем браузере, сервер аудита ключи не сохраняет."
           />
 
           <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
@@ -51,6 +60,15 @@ export default function SettingsPage() {
               <Panel as="aside" className="p-4">
                 <p className="text-sm font-semibold text-ink">Разделы</p>
                 <div className="mt-4 space-y-2 text-[13px]">
+                  <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-ink">Как получить ключ</span>
+                      <Badge tone="positive">новое</Badge>
+                    </div>
+                    <p className="mt-1 leading-relaxed text-muted">
+                      Что это такое и пошаговая инструкция.
+                    </p>
+                  </div>
                   <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-ink">Локальная конфигурация</span>
@@ -73,7 +91,8 @@ export default function SettingsPage() {
               </Panel>
             </div>
 
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-6">
+              <ApiKeyGuide />
               <SettingsForm />
             </div>
           </div>

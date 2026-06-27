@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
-import Script from "next/script";
 import { AppBar } from "@/components/AppBar";
 import { Footer } from "@/components/Footer";
-import { SITE_URL } from "@/lib/site";
+import { ConsentBanner } from "@/components/ConsentBanner";
+import { SITE_URL, withHreflang } from "@/lib/site";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -25,12 +25,14 @@ const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
   "Seofriendly — бесплатный SEO-аудит сайта нейросетью. Браузерная проверка sitemap.xml, robots.txt, canonical, мета-тегов, скорости и адаптивности с отчётом от нейросети.";
 
-const YANDEX_METRIKA_ID = (
-  process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID ?? ""
-).trim();
-const YANDEX_METRIKA_ENABLED = /^\d+$/.test(YANDEX_METRIKA_ID);
-const ENABLE_WEBVISOR = process.env.NEXT_PUBLIC_ENABLE_WEBVISOR === "true";
-const ENABLE_CLICKMAP = process.env.NEXT_PUBLIC_ENABLE_CLICKMAP === "true";
+// Twitter handle — заполни здесь при появлении аккаунта. Сейчас явно
+// пусто, чтобы поля не рендерились как @undefined.
+const TWITTER_SITE: string | undefined = undefined;
+const TWITTER_CREATOR: string | undefined = undefined;
+
+// Yandex.Metrika и consent-баннер живут в @/components/ConsentBanner —
+// он сам читает NEXT_PUBLIC_YANDEX_METRIKA_ID и грузит счётчик только
+// после явного согласия пользователя.
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -57,9 +59,7 @@ export const metadata: Metadata = {
   publisher: SITE_NAME,
   alternates: {
     canonical: `${SITE_URL}/`,
-    languages: {
-      "ru-RU": `${SITE_URL}/`,
-    },
+    languages: withHreflang("/"),
   },
   openGraph: {
     type: "website",
@@ -82,6 +82,8 @@ export const metadata: Metadata = {
     title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
     description: SITE_DESCRIPTION,
     images: ["/twitter-image"],
+    ...(TWITTER_SITE ? { site: TWITTER_SITE } : {}),
+    ...(TWITTER_CREATOR ? { creator: TWITTER_CREATOR } : {}),
   },
   // Icons and PWA manifest are wired through file conventions in `src/app/`
   // (`favicon.ico`, `icon.png`, `icon16.png`, `apple-icon.png`, `icon192.png`,
@@ -122,32 +124,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AppBar />
         {children}
         <Footer />
-        {YANDEX_METRIKA_ENABLED ? (
-          <>
-            <Script id="yandex-metrika" strategy="afterInteractive">
-              {`
-                (function(m,e,t,r,i,k,a){
-                  m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-                  m[i].l=1*new Date();
-                  for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-                  k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-                })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=${YANDEX_METRIKA_ID}', 'ym');
-
-                ym(${YANDEX_METRIKA_ID}, 'init', {ssr:true, webvisor:${ENABLE_WEBVISOR}, clickmap:${ENABLE_CLICKMAP}, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
-              `}
-            </Script>
-            <noscript>
-              <div>
-                {/* eslint-disable-next-line @next/next/no-img-element -- noscript analytics pixel */}
-                <img
-                  src={`https://mc.yandex.ru/watch/${YANDEX_METRIKA_ID}`}
-                  style={{ position: "absolute", left: "-9999px" }}
-                  alt=""
-                />
-              </div>
-            </noscript>
-          </>
-        ) : null}
+        <ConsentBanner />
       </body>
     </html>
   );

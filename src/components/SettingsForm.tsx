@@ -121,6 +121,16 @@ export function SettingsForm() {
                 )}
               </Button>
             </div>
+            <p className="text-[12px] leading-relaxed text-muted">
+              Не знаете, что вводить?{" "}
+              <a
+                href="#api-key-guide"
+                className="text-ink underline underline-offset-2"
+              >
+                Где взять ключ и что это такое
+              </a>
+              .
+            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
@@ -133,7 +143,17 @@ export function SettingsForm() {
                 labelClassName="font-mono text-[11px] uppercase tracking-wider"
                 options={[
                   { value: "go", label: "opencode go" },
-                  { value: "zen", label: "opencode zen" },
+                  {
+                    value: "zen",
+                    label: (
+                      <span className="inline-flex items-center gap-1.5">
+                        opencode zen
+                        <span className="rounded-full border border-positive/30 bg-positive/10 px-1.5 py-0.5 font-sans text-[9px] font-semibold uppercase tracking-wider text-positive">
+                          free
+                        </span>
+                      </span>
+                    ),
+                  },
                 ]}
               />
             </div>

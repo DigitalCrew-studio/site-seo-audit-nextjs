@@ -23,3 +23,21 @@ function readBrandEmail(): string {
 
 export const SITE_URL = readSiteUrl();
 export const BRAND_EMAIL = readBrandEmail();
+
+// Единая фабрика hreflang-languages. Возвращает объект, пригодный для
+// Next.js Metadata.alternates.languages: ru-RU с самоссылающимся URL плюс
+// x-default, который ведёт на ту же страницу. Поисковики рекомендуют
+// x-default даже на одноязычных сайтах — это снимает неоднозначность,
+// когда язык пользователя не определён.
+// Использование: alternates: { canonical: ..., languages: withHreflang("/about") }
+export function withHreflang(path: string): {
+  "ru-RU": string;
+  "x-default": string;
+} {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const url = `${SITE_URL}${normalized}`;
+  return {
+    "ru-RU": url,
+    "x-default": url,
+  };
+}

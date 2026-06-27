@@ -43,12 +43,12 @@ export function Footer() {
 
           <div>
             <p className="eyebrow text-faint">навигация</p>
-            <nav className="mt-3 flex flex-col items-start gap-2">
+            <nav className="mt-3 flex flex-col items-start">
               {NAV_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-sm font-medium text-muted transition hover:text-ink"
+                  className="inline-flex min-h-[36px] items-center text-sm font-medium text-muted transition hover:text-ink"
                 >
                   {link.label}
                 </Link>
@@ -58,12 +58,12 @@ export function Footer() {
 
           <div>
             <p className="eyebrow text-faint">информация</p>
-            <nav className="mt-3 flex flex-col items-start gap-2">
+            <nav className="mt-3 flex flex-col items-start">
               {INFO_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-sm font-medium text-muted transition hover:text-ink"
+                  className="inline-flex min-h-[36px] items-center text-sm font-medium text-muted transition hover:text-ink"
                 >
                   {link.label}
                 </Link>
@@ -73,12 +73,12 @@ export function Footer() {
 
           <div>
             <p className="eyebrow text-faint">техническое</p>
-            <nav className="mt-3 flex flex-col items-start gap-2">
+            <nav className="mt-3 flex flex-col items-start">
               {TECH_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="font-mono text-[13px] text-muted transition hover:text-ink"
+                  className="inline-flex min-h-[36px] items-center font-mono text-[13px] text-muted transition hover:text-ink"
                 >
                   {link.label}
                 </Link>

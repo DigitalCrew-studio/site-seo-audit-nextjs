@@ -117,6 +117,11 @@ export function AppBar() {
         <button
           type="button"
           onClick={() => setMenuOpen((open) => !open)}
+          // touch-action: manipulation отключает 300ms tap-delay и не даёт
+          // браузеру интерпретировать touch как начало скролла — иначе на iOS
+          // микро-сдвиг пальца отменяет click и бургер «не нажимается».
+          onTouchStart={(e) => e.stopPropagation()}
+          style={{ touchAction: "manipulation" }}
           aria-expanded={menuOpen}
           aria-controls="mobile-navigation"
           aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}

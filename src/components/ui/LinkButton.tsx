@@ -6,7 +6,7 @@ type Variant = "primary" | "secondary" | "outline" | "inverse";
 
 const base =
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-lg whitespace-nowrap " +
-  "min-h-[2.875rem] px-5 py-2.5 text-sm font-semibold transition " +
+  "min-h-[3rem] px-5 py-2.5 text-sm font-semibold transition " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20 focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
 
 const variantClasses: Record<Variant, string> = {

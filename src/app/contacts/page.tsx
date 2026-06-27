@@ -1,22 +1,27 @@
 import type { Metadata } from "next";
 import { Mail, MessageSquare, Globe } from "lucide-react";
-import { PageHeader } from "@/components/ui";
-import { SITE_URL, BRAND_EMAIL } from "@/lib/site";
+import { Breadcrumbs, PageHeader } from "@/components/ui";
+import { SITE_URL, BRAND_EMAIL, withHreflang } from "@/lib/site";
+import {
+  pageBreadcrumb,
+  webPageSchema,
+} from "@/lib/structuredData";
 
 const SITE_NAME = "Seofriendly";
 
+const PAGE_TITLE = "Контакты Seofriendly — как связаться";
+const PAGE_DESCRIPTION = `Как связаться с командой ${SITE_NAME}: электронная почта, обратная связь по работе сервиса, сообщения об ошибках.`;
+
 export const metadata: Metadata = {
-  title: "Контакты",
-  description: `Как связаться с командой ${SITE_NAME}: электронная почта, обратная связь, новости сервиса.`,
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   alternates: {
     canonical: `${SITE_URL}/contacts`,
-    languages: {
-      "ru-RU": `${SITE_URL}/contacts`,
-    },
+    languages: withHreflang("/contacts"),
   },
   openGraph: {
     title: `Контакты — ${SITE_NAME}`,
-    description: `Как связаться с командой ${SITE_NAME}.`,
+    description: PAGE_DESCRIPTION,
     url: `${SITE_URL}/contacts`,
     type: "website",
     locale: "ru_RU",
@@ -33,10 +38,25 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: `Контакты — ${SITE_NAME}`,
-    description: `Как связаться с командой ${SITE_NAME}.`,
+    description: PAGE_DESCRIPTION,
     images: ["/twitter-image"],
   },
 };
+
+function buildContactsStructuredData() {
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      webPageSchema({
+        path: "/contacts",
+        name: PAGE_TITLE,
+        description: PAGE_DESCRIPTION,
+        pageType: "ContactPage",
+      }),
+      pageBreadcrumb("Контакты", "/contacts"),
+    ],
+  };
+}
 
 const CHANNELS = [
   {
@@ -68,18 +88,41 @@ const FAQ = [
     q: "Есть ли у сервиса аккаунт в соцсетях?",
     a: "Каналы появятся позже. Пока основной и единственный канал связи — электронная почта.",
   },
+  {
+    q: "Как быстро вы отвечаете?",
+    a: "Обычно в течение нескольких рабочих дней. Если вопрос требует воспроизведения конкретного аудита — может понадобиться дополнительное время, мы сообщим о ходе работы.",
+  },
+  {
+    q: "Подходит ли эта почта для коммерческих предложений?",
+    a: "Да, мы открыты к партнёрствам и интеграциям. Опишите кратко задачу и контактные данные — вернёмся с ответом.",
+  },
 ];
 
 export default function ContactsPage() {
+  const structuredData = buildContactsStructuredData();
   return (
     <main className="min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <div className="paper-grid">
-        <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+          <Breadcrumbs items={[{ label: "Контакты" }]} className="mb-3" />
           <PageHeader
-            eyebrow="контакты"
             title="Связаться с командой"
             description="Каналы обратной связи для вопросов, сообщений об ошибках и предложений по улучшению сервиса."
           />
+
+          <section className="prose prose-neutral max-w-3xl text-[15px] leading-relaxed text-ink-soft">
+            <p>
+              {SITE_NAME} — небольшой авторский проект, и обратная связь от
+              пользователей для нас главный источник идей по развитию
+              сервиса. Если вы нашли неточность в отчёте, заметили ошибку в
+              работе аудита или хотите предложить новую проверку — напишите,
+              мы читаем каждое письмо и отвечаем на значимые обращения.
+            </p>
+          </section>
 
           <ul className="mt-6 grid gap-3 sm:grid-cols-2">
             {CHANNELS.map((channel) => {
@@ -109,40 +152,42 @@ export default function ContactsPage() {
             })}
           </ul>
 
-          <section className="mt-12" aria-labelledby="contacts-faq-heading">
-            <h2
-              id="contacts-faq-heading"
-              className="text-xl font-semibold tracking-tight text-ink"
-            >
-              Частые вопросы
-            </h2>
-            <div className="mt-4 grid gap-px overflow-hidden rounded-xl border border-line bg-line">
-              {FAQ.map((item) => (
-                <details
-                  key={item.q}
-                  className="group bg-surface px-5 py-4 [&[open]]:bg-paper/40"
-                >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[14px] font-semibold text-ink">
-                    <span>{item.q}</span>
-                    <span
-                      aria-hidden="true"
-                      className="font-mono text-base text-muted transition group-open:rotate-45"
-                    >
-                      +
-                    </span>
-                  </summary>
-                  <p className="mt-3 text-[13px] leading-relaxed text-muted">
-                    {item.a}
-                  </p>
-                </details>
-              ))}
-            </div>
-          </section>
+          <div className="max-w-3xl">
+            <section className="mt-12" aria-labelledby="contacts-faq-heading">
+              <h2
+                id="contacts-faq-heading"
+                className="text-xl font-semibold tracking-tight text-ink"
+              >
+                Частые вопросы
+              </h2>
+              <div className="mt-4 grid gap-px overflow-hidden rounded-xl border border-line bg-line">
+                {FAQ.map((item) => (
+                  <details
+                    key={item.q}
+                    className="group bg-surface px-5 py-4 [&[open]]:bg-paper/40"
+                  >
+                    <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-4 text-[14px] font-semibold text-ink">
+                      <span>{item.q}</span>
+                      <span
+                        aria-hidden="true"
+                        className="font-mono text-base text-muted transition group-open:rotate-45"
+                      >
+                        +
+                      </span>
+                    </summary>
+                    <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                      {item.a}
+                    </p>
+                  </details>
+                ))}
+              </div>
+            </section>
 
-          <p className="mt-10 inline-flex items-center gap-2 text-[13px] leading-relaxed text-faint">
-            <MessageSquare className="h-3.5 w-3.5" />
-            Среднее время ответа — несколько рабочих дней.
-          </p>
+            <p className="mt-10 inline-flex items-center gap-2 text-[13px] leading-relaxed text-faint">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Среднее время ответа — несколько рабочих дней.
+            </p>
+          </div>
         </div>
       </div>
     </main>

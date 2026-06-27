@@ -521,7 +521,7 @@ export default function HomePage() {
                   key={item.q}
                   className="group bg-surface px-5 py-4 [&[open]]:bg-paper/40"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[14px] font-semibold text-ink">
+                  <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-4 text-[14px] font-semibold text-ink">
                     <span>{item.q}</span>
                     <span
                       aria-hidden="true"
