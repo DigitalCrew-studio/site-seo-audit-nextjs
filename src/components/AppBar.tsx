@@ -123,9 +123,13 @@ export function AppBar() {
           // браузеру интерпретировать touch как начало скролла. Раньше здесь
           // был `onTouchStart={e => e.stopPropagation()}` — в Safari iOS он
           // глушил синтетический `click`, и бургер «не нажимался».
+          // cursor: pointer нужен для старых iOS Safari: без него Preflight
+          // Tailwind сбрасывает cursor на default, и Safari не считает
+          // элемент кликабельным — тап не вызывает `click`.
           style={{
             touchAction: "manipulation",
             WebkitTapHighlightColor: "transparent",
+            cursor: "pointer",
             position: "relative",
             zIndex: 1,
           }}
