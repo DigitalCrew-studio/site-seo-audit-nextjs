@@ -32,6 +32,21 @@ export async function extractStructuredData(
   };
 
   const data = await page.evaluate(() => {
+    // page.evaluate runs in the browser context, so it has no access to
+    // the outer MAX_* consts. Re-declare the same values here. Keep these
+    // in sync with the outer consts above.
+    const MAX_BLOCK_SAMPLE = 2;
+    const MAX_BLOCKS_SUMMARY = 5;
+    const MAX_TYPES = 30;
+    const MAX_IDS = 10;
+    const MAX_CONTEXTS = 5;
+    const MAX_ITEM_TYPES = 10;
+    const MAX_ITEM_PROPS = 15;
+    const MAX_PROPERTY_SAMPLE = 10;
+    const MAX_VOCAB_SAMPLE = 5;
+    const MAX_SCHEMA_IMAGES = 10;
+    const BLOCK_TRUNCATE = 800;
+
     const title = document.title || "";
     const h1 = (document.querySelector("h1")?.textContent || "").trim();
     const path = window.location.pathname.toLowerCase();

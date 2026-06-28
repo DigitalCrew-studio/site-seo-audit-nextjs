@@ -96,7 +96,7 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 (Включи рекомендации Lighthouse из opportunities/diagnostics/failedAudits, если они есть. Разрешены практические рекомендации, но без roadmap, owners, timeline, sprint и бэклога.)
 
 ## Не оценено / ограничения
-<Что не удалось проверить внутри URL-only аудита: например, инструмент не запустился, доступ закрыт, данных на публичной странице нет, проверка требует авторизованного API. Не упоминай Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports как «не предоставлено», потому что текущий интерфейс принимает только URL.>
+<Что не удалось проверить внутри URL-only аудита: например, инструмент не запустился, доступ закрыт, данных на публичной странице нет, проверка требует авторизованного API. Не упоминай недоступные внешние кабинеты, загруженные отчёты или внешние экспортные файлы как «не предоставлено», потому что текущий интерфейс принимает только URL.>
 
 ## Приложение с доказательствами
 - Целевой URL:
@@ -206,7 +206,7 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 (Include Lighthouse recommendations from opportunities/diagnostics/failedAudits when available. Practical recommendations are allowed, but do not include roadmap, owners, timeline, sprint, or backlog.)
 
 ## Not assessed / limitations
-<What could not be tested within the URL-only audit: e.g. a tool failed, public access was blocked, public page data was absent, or an authenticated API would be required. Do not mention Search Console, uploaded reports, Ahrefs/Semrush/backlink exports as “not provided”, because the current interface accepts only a URL.>
+<What could not be tested within the URL-only audit: e.g. a tool failed, public access was blocked, public page data was absent, or an authenticated API would be required. Do not mention unavailable external dashboards, uploaded reports, or external export files as “not provided”, because the current interface accepts only a URL.>
 
 ## Evidence appendix
 - Target URL:
@@ -266,18 +266,22 @@ export function reportInstructions(language: AuditLanguage): string {
   if (language === "ru") {
     return `## Формат отчёта (СТРОГО)
 
-Этот шаблон ДИАГНОСТИЧЕСКОГО отчёта имеет приоритет над любым другим форматом отчётности, упомянутым в подключённом SEO-навыке (включая секции «Recommended roadmap», «Top 5 priorities», «Validation checklist», поля «Owner», временные рамки, спринты, бэклоги). Отчёт ДОЛЖЕН быть человекочитаемой диагностикой с отдельным разделом рекомендаций, а не задачником.
+Этот шаблон ДИАГНОСТИЧЕСКОГО отчёта имеет приоритет над любым другим форматом отчётности, упомянутым в подключённом SEO-навыке (включая старые карточки находок, приоритетные списки, roadmap-секции, чек-листы валидации, поля владельцев/сроков, спринты и бэклоги). Отчёт ДОЛЖЕН быть человекочитаемой диагностикой с отдельным разделом рекомендаций, а не задачником.
 
 Ты ДОЛЖЕН вернуть отчёт, который СТРОГО следует приведённому ниже шаблону, секция за секцией, в указанном порядке. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются только устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph и т.п.). Заполни каждую секцию реальным содержимым на основе собранных через инструменты доказательств. Не пропускай секции. Если для секции нет данных, явно укажи «Не оценено» или «Требует данных» и объясни почему — никогда не выдумывай факты.
 
 Правила заполнения:
-- Скоркард оценивается по 100-балльной URL-only модели. Оценивай только области, которые можно проверить по публичному URL и доступным инструментам. Не добавляй штрафы за Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports или другие данные, которые текущий интерфейс не принимает. Если область из URL-only набора не проверена — оставь «Проверено» = 0 и пометь «Статус» как «Не оценено», не угадывай. Баллы диагностические, не прогноз позиций.
+- Скоркард оценивается по 100-балльной URL-only модели. Оценивай только области, которые можно проверить по публичному URL и доступным инструментам. Не добавляй штрафы за недоступные внешние кабинеты, загруженные отчёты, внешние экспортные файлы или другие данные, которые текущий интерфейс не принимает. Если область из URL-only набора не проверена — оставь «Проверено» = 0 и пометь «Статус» как «Не оценено», не угадывай. Баллы диагностические, не прогноз позиций.
 - Таблица «Основные SEO-риски» — одна строка на риск. Колонки строго: Область, URL, Доказательство, Текущее состояние, Норма или ориентир, Значение для SEO, Серьёзность, Достоверность. Рекомендации выноси только в отдельный раздел «Рекомендации по улучшению». ЗАПРЕЩЕНО добавлять колонки «Owner», «Timeline», «Sprint», «Priority P0–P3» в виде владельцев или сроков — это диагностика, а не бэклог.
-- В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering по desktop/laptop/tablet/mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.
+- В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering по desktop/laptop/tablet/mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про недоступные внешние кабинеты, загруженные отчёты или внешние экспортные файлы.
 - В разделе «Диагностика Lighthouse / производительности» используй ТЕКСТОВЫЕ ШКАЛЫ, например «🟢 ██████████», «🟡 ██████░░░░», «🔴 ███░░░░░░░», для каждой метрики: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. Если метрика недоступна — «Не оценено» с причиной.
 - Раздел «Постраничная визуальная проверка» обязателен: используй все результаты inspect_responsive_rendering, включая дополнительные page-by-page скриншоты crawled URL. Не своди визуальную проверку только к 4 скриншотам главной, если preflight собрал больше страниц.
+- В визуальных наблюдениях описывай только факты из inspect_responsive_rendering и сохранённых скриншотов. Не добавляй наблюдения про карту, контраст, iPhone SE, alt у иконок, формы или конкретные кнопки, если таких данных нет в evidence.
+- Каждая строка Markdown-таблицы должна быть на отдельной строке. Не склеивай header row, separator row и data rows в один абзац. Перед и после каждой таблицы оставляй пустую строку.
 - Раздел «Рекомендации по улучшению» обязателен: включи практические рекомендации на основе собранных доказательств, особенно Lighthouse opportunities/diagnostics/failedAudits. Не выдумывай рекомендации без фактов.
 - ЗАПРЕЩЕНО: roadmap, владельцы, сроки, спринты, бэклоги, чек-листы валидации как задачи. Отчёт диагностический, а не плановый.
+- ЗАПРЕЩЕНО использовать старую структуру навыка: отдельные приоритетные списки, квадратные метки P0-P3, карточки находок с полем проверки/валидации, секции внешней авторитетности без данных и названия недоступных внешних провайдеров данных как ограничения.
+- Стиль должен быть нейтральным диагностическим. Не используй «безупречный», «идеальный», «эталонный» и похожую рекламную лексику; вместо этого пиши «по проверенным данным проблем не обнаружено».
 - Не выводи <think>, chain-of-thought, скрытые заметки или code fence. Только сам отчёт.
 
 ### Ориентиры и нормативы (используй для сравнения с фактами):
@@ -294,18 +298,22 @@ ${RU_REPORT_TEMPLATE}
 
   return `## Report format (STRICT)
 
-This DIAGNOSTIC report template takes priority over any other reporting format inside the attached SEO skill (including the "Required final report structure" and "Required finding format" sections of the skill, and any "Recommended roadmap", "Top 5 priorities", "Validation checklist", "Owner", timelines, sprints, or task backlogs). The report MUST be a human-readable SEO diagnostic with a dedicated recommendations section, not a task backlog.
+This DIAGNOSTIC report template takes priority over any other reporting format inside the attached SEO skill (including older finding-card structures, priority-list sections, roadmap sections, validation checklists, owner/timeline fields, sprints, or task backlogs). The report MUST be a human-readable SEO diagnostic with a dedicated recommendations section, not a task backlog.
 
 You MUST return a report that STRICTLY follows the template below, section by section, in the exact order shown. Every visible heading, table header, status label, and Scorecard category label MUST be strictly in English (only established technical terms are allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph, and similar). Fill every section with real content based on evidence collected via the tools. Do not skip sections. If you have no data for a section, explicitly mark it "Not assessed" or "Requires data" and explain why — never invent facts.
 
 Filling rules:
-- Score the Scorecard using the 100-point URL-only model. Assess only areas that can be checked from the public URL and available tools. Do not penalize for Search Console, uploaded reports, Ahrefs/Semrush/backlink exports, or other inputs that the current interface does not accept. If a URL-only area was not assessed, leave "Verified" = 0 and set "Status" to "Not assessed" — never guess. Scores are diagnostic, not predictive.
+- Score the Scorecard using the 100-point URL-only model. Assess only areas that can be checked from the public URL and available tools. Do not penalize for unavailable external dashboards, uploaded reports, external export files, or other inputs that the current interface does not accept. If a URL-only area was not assessed, leave "Verified" = 0 and set "Status" to "Not assessed" — never guess. Scores are diagnostic, not predictive.
 - The "Main SEO risks" table is one row per risk. Columns are strictly: Area, URL, Evidence, Current state, Normal benchmark, SEO implication, Severity, Confidence. Put recommendations only in the dedicated "Improvement recommendations" section. DO NOT add "Owner", "Timeline", "Sprint", or "Priority P0–P3" columns used as owners or schedules — this is a diagnostic, not a backlog.
-- In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering across desktop / laptop / tablet / mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.
+- In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering across desktop / laptop / tablet / mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for unavailable external dashboards, uploaded reports, or external export files.
 - In the "Lighthouse / performance diagnostics" section, use TEXTUAL GAUGES such as "🟢 ██████████", "🟡 ██████░░░░", "🔴 ███░░░░░░░" for each metric: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. If a metric is unavailable, mark "Not assessed" and state the reason.
 - The "Page-by-page visual check" section is required: use all inspect_responsive_rendering results, including additional page-by-page screenshots for crawled URLs. Do not reduce visual checking to only the 4 homepage screenshots when preflight collected more pages.
+- In visual observations, describe only facts from inspect_responsive_rendering and stored screenshots. Do not add observations about maps, contrast, iPhone SE, icon alt text, forms, or specific buttons unless those facts are present in evidence.
+- Every Markdown table row must be on its own line. Do not merge the header row, separator row, and data rows into one paragraph. Leave a blank line before and after each table.
 - The "Improvement recommendations" section is required: include practical recommendations based on collected evidence, especially Lighthouse opportunities/diagnostics/failedAudits. Do not invent recommendations without evidence.
 - DO NOT include: roadmap, owners, timelines, sprints, backlogs, or validation checklists framed as tasks. The report is diagnostic, not a plan.
+- DO NOT use the old skill structure: separate priority lists, square P0-P3 labels, individual finding cards with validation/check-method fields, external-authority sections without data, or unavailable external data-provider names as limitations.
+- Use neutral diagnostic language. Do not use "perfect", "flawless", "best-in-class", or similar marketing praise; instead write "no issue was found in the checked evidence".
 - Do not output <think>, chain-of-thought, hidden notes, or code fences. Only the report.
 
 ### Benchmark / reference values (use them to compare facts):

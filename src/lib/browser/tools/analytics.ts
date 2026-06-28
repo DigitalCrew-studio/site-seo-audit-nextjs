@@ -94,6 +94,8 @@ export async function inspectAnalyticsTags(
       MAX_THIRD_PARTY_HOSTS: number;
       MAX_IDENTIFIERS_PER_KIND: number;
       MAX_SCRIPTS_SCANNED: number;
+      MAX_CONSENT_HITS: number;
+      MAX_DUPLICATE_SIGNALS: number;
       DUPLICATE_MIN_COUNT: number;
       CONSENT_KEYWORDS: string[];
       CONSENT_HOST_PARTS: string[];
@@ -420,9 +422,9 @@ export async function inspectAnalyticsTags(
         dataLayerPresent,
         consentSignals: {
           detected: consentHits.size > 0,
-          hits: Array.from(consentHits).slice(0, MAX_CONSENT_HITS),
+          hits: Array.from(consentHits).slice(0, args.MAX_CONSENT_HITS),
         },
-        duplicateSignals: duplicateSignals.slice(0, MAX_DUPLICATE_SIGNALS),
+        duplicateSignals: duplicateSignals.slice(0, args.MAX_DUPLICATE_SIGNALS),
       };
     },
     {
@@ -430,6 +432,8 @@ export async function inspectAnalyticsTags(
       MAX_THIRD_PARTY_HOSTS,
       MAX_IDENTIFIERS_PER_KIND,
       MAX_SCRIPTS_SCANNED,
+      MAX_CONSENT_HITS,
+      MAX_DUPLICATE_SIGNALS,
       DUPLICATE_MIN_COUNT,
       CONSENT_KEYWORDS,
       CONSENT_HOST_PARTS,

@@ -840,20 +840,25 @@ export const useAuditStore = create<AuditState>((set, get) => {
 
         if (!res.body) throw new Error("No response stream");
 
+        let terminalReceived = false;
+
         await consumeSSE(res.body, {
           onStatus: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             const log: LogEntry = { type: "status", message: p.message, phase: p.phase, time: now() };
             appendToRunningSaved(log);
             if (isViewingLiveRun()) addLog(log);
           },
           onTool: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             const log: LogEntry = { type: "tool", name: p.name, args: p.args, time: now() };
             appendToRunningSaved(log);
             if (isViewingLiveRun()) addLog(log);
           },
           onToolError: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             const log: LogEntry = {
               type: "tool_error",
@@ -866,6 +871,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
             if (isViewingLiveRun()) addLog(log);
           },
           onToolEnd: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             const log: LogEntry = {
               type: "tool_end",
@@ -880,6 +886,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
             if (isViewingLiveRun()) addLog(log);
           },
           onDebug: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             const log: LogEntry = {
               type: "debug",
@@ -891,6 +898,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
             if (isViewingLiveRun()) addLog(log);
           },
           onScreenshot: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             // Persist the base64 payload to IndexedDB so saved audits can
             // reference the same blob.
@@ -958,6 +966,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
             }
           },
           onReportImage: (p) => {
+            if (terminalReceived) return;
             if (runId !== id) return;
             // Dedupe by kind+source+url. Remote (OG/Twitter) entries
             // keep their original URL; no IndexedDB write is required.
@@ -1009,9 +1018,11 @@ export const useAuditStore = create<AuditState>((set, get) => {
             }
           },
           onError: (p) => {
+            if (terminalReceived) return;
             // If this run was already superseded, do not let the late
             // error event clobber the new active saved audit.
             if (runId !== id) return;
+            terminalReceived = true;
             const log: LogEntry = { type: "error", message: p.message, time: now() };
             appendToRunningSaved(log);
             if (isViewingLiveRun()) addLog(log);
@@ -1019,7 +1030,19 @@ export const useAuditStore = create<AuditState>((set, get) => {
           },
           onDone: (p) => {
             if (runId !== id) return;
-            persistTerminalSnapshot({ report: p.report }, "completed");
+            terminalReceived = true;
+            const log: LogEntry = {
+              type: "status",
+              message: language === "ru" ? "Отчёт готов" : "Report ready",
+              phase: "report",
+              time: now(),
+            };
+            appendToRunningSaved(log);
+            if (isViewingLiveRun()) addLog(log);
+            persistTerminalSnapshot(
+              { report: p.report, reportOpen: false },
+              "completed"
+            );
           },
         });
       } catch (err) {

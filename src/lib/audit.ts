@@ -8,12 +8,13 @@ import { BrowserSession, type BrowserLogFn } from "@/lib/playwright";
 import { getEndpoint } from "@/lib/opencode";
 import { TOOLS } from "@/lib/tools";
 import { buildSystemPrompt } from "@/lib/prompts";
+import { normalizeMarkdownTables } from "@/lib/markdown";
 import type { Emitter } from "@/lib/sse";
 import type { AuditLanguage } from "@/lib/types";
 
 const MAX_TOKENS = 16000;
-const MAX_FINAL_TOKENS = 8000;
-const MAX_EMERGENCY_FINAL_TOKENS = 4000;
+const MAX_FINAL_TOKENS = 12000;
+const MAX_EMERGENCY_FINAL_TOKENS = 12000;
 const MAX_FINAL_CONTINUATIONS = 3;
 const FINAL_REPORT_END_MARKER = "END_OF_AUDIT_REPORT";
 const FINAL_CONTINUATION_CONTEXT_CHARS = 12_000;
@@ -27,8 +28,8 @@ const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 1_800_000);
 // Budgets that keep the audit from running away. Values are intentionally
 // pragmatic (not a 1:1 token/byte map) — they just cap the worst cases.
 const PER_MODEL_WAIT_MS = Number(process.env.MODEL_IDLE_TIMEOUT_MS ?? 180_000);
-const PER_FINAL_MODEL_WAIT_MS = 110000;  // final reports are long; partials continue instead of being accepted
-const PER_EMERGENCY_FINAL_MODEL_WAIT_MS = 60000;
+const PER_FINAL_MODEL_WAIT_MS = 180000;  // final reports are long; partials continue instead of being accepted
+const PER_EMERGENCY_FINAL_MODEL_WAIT_MS = 180000;
 const MAX_AUDIT_DURATION_MS = Number(process.env.AUDIT_MAX_DURATION_MS ?? 0);
 const FINALIZE_AFTER_MS = 150000;       // switch from discovery to report writing
 const MIN_FINAL_REPORT_MS = 100000;     // keep enough time for the final report
@@ -37,6 +38,18 @@ const MAX_HTML_TOOL_RESULT_BYTES = 10_000;
 const MAX_TEXT_TOOL_RESULT_BYTES = 10_000;
 const MAX_CONTEXT_BYTES = 1_500_000;    // total message-array bytes cap
 const MAX_TOOL_CALLS = 24;
+// Hard wall-clock caps for a single streamed request. These are NOT idle
+// timers (those are PER_MODEL_WAIT_MS and reset on every chunk). They cap
+// the absolute time a model call can spend, even when the model streams
+// slowly but continuously. Tunable via env so a user can raise/lower them
+// without redeploying.
+const DISCOVERY_STEP_MAX_MS = Number(process.env.DISCOVERY_STEP_MAX_MS ?? 90_000);
+const FINAL_STEP_MAX_MS = Number(process.env.FINAL_STEP_MAX_MS ?? 210_000);
+const EMERGENCY_STEP_MAX_MS = Number(process.env.EMERGENCY_STEP_MAX_MS ?? 210_000);
+const MAX_AGENT_STEPS = Number(process.env.MAX_AGENT_STEPS ?? 6);
+// Time we tolerate a stream without any usable progress (no tool call and
+// no real content). After this, the request is aborted and we fall back.
+const NO_PROGRESS_GRACE_MS = Number(process.env.NO_PROGRESS_GRACE_MS ?? 30_000);
 const MAX_VISIT_PAGE_CALLS = 1;
 const MAX_INSPECT_PAGE_CALLS = 6;
 const MAX_HTML_TOOL_CALLS = 2;
@@ -152,6 +165,7 @@ type ToolStats = {
   denied: number;
   cacheHits: number;
   skippedStaticAssets: number;
+  skippedBudget: number;
 };
 
 function createToolStats(): ToolStats {
@@ -186,6 +200,7 @@ function createToolStats(): ToolStats {
     denied: 0,
     cacheHits: 0,
     skippedStaticAssets: 0,
+    skippedBudget: 0,
   };
 }
 
@@ -274,8 +289,8 @@ function buildFinalReportMessage(language: AuditLanguage): ChatCompletionMessage
     role: "user",
     content:
       language === "ru"
-        ? `Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному диагностическому шаблону из системного промпта: все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно заполни матрицу охвата проверок (Проверено / Частично / Не оценено / Требует данных), текстовые шкалы для Lighthouse / Core Web Vitals, постраничную визуальную проверку по inspect_responsive_rendering и раздел рекомендаций по улучшению. Без roadmap, владельцев и сроков. Если данных не хватает, явно укажи ограничение и не выдумывай факты. Не выводи рассуждения, chain-of-thought, <think>, скрытые заметки или markdown code fence. Начни сразу с "${heading}". В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}. Если не успеваешь закончить, не выводи этот маркер.`
-        : `Stop calling tools. Produce the FINAL DIAGNOSTIC SEO audit now using only the evidence already collected. Follow the required diagnostic template from the system prompt: every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure you fill the Check coverage matrix (Checked / Partially checked / Not assessed / Requires data), textual gauges for Lighthouse / Core Web Vitals, page-by-page visual check from inspect_responsive_rendering, and the improvement recommendations section. No roadmap, owners, or timelines. If evidence is incomplete, state the limitation clearly and do not invent facts. Do not output reasoning, chain-of-thought, <think>, hidden notes, or a markdown code fence. Start directly with "${heading}". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line. If you cannot finish, do not output this marker.`,
+        ? `Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному диагностическому шаблону из системного промпта, секция за секцией. Запрещены старые секции навыка, квадратные приоритетные метки P0-P3, поля проверки/валидации, roadmap, владельцы, сроки, разделы внешней авторитетности без данных и названия недоступных внешних провайдеров данных. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно заполни матрицу охвата проверок, текстовые шкалы Lighthouse/Core Web Vitals, постраничную визуальную проверку и раздел рекомендаций по улучшению. Если данных не хватает, явно укажи ограничение без упоминания недоступных внешних провайдеров и не выдумывай факты. Пиши нейтрально, без «безупречный/идеальный/эталонный». Не выводи рассуждения, chain-of-thought, <think>, скрытые заметки или markdown code fence. Начни сразу с "${heading}". В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}. Если не успеваешь закончить, не выводи этот маркер.`
+        : `Stop calling tools. Produce the FINAL DIAGNOSTIC SEO audit now using only the evidence already collected. Follow the required diagnostic template from the system prompt, section by section. Forbidden: old skill report sections, square P0-P3 priority labels, validation/check-method fields, roadmap, owners, timelines, external-authority sections without data, and unavailable external data-provider names. Every visible heading, table header, status label, and scorecard category label MUST be in English. Fill the Check coverage matrix, Lighthouse/Core Web Vitals textual gauges, page-by-page visual check, and improvement recommendations section. If evidence is incomplete, state the limitation without naming unavailable external providers and do not invent facts. Use neutral diagnostic language; avoid "perfect", "flawless", or "best-in-class". Do not output reasoning, chain-of-thought, <think>, hidden notes, or a markdown code fence. Start directly with "${heading}". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line. If you cannot finish, do not output this marker.`,
   };
 }
 
@@ -285,8 +300,8 @@ function buildEmergencyFinalReportMessage(language: AuditLanguage): ChatCompleti
     role: "user",
     content:
       language === "ru"
-        ? `Предыдущая попытка итогового отчёта не завершилась корректно. Немедленно верни компактный, но полноценный ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательным секциям шаблона. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно включи матрицу охвата проверок, постраничную визуальную проверку, таблицу основных SEO-рисков и раздел рекомендаций по улучшению. Без roadmap, владельцев и сроков. Не используй инструменты. Не выводи <think>, рассуждения, преамбулу или code fence. Начни с "${heading}". Ограничься самыми важными проверенными находками и явно пометь непроверенное как «Не оценено». В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
-        : `The previous final-report attempt did not complete cleanly. Immediately return a compact but complete DIAGNOSTIC SEO audit using the required template sections. Every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure to include the Check coverage matrix, Page-by-page visual check, Main SEO risks table, and Improvement recommendations section. No roadmap, owners, or timelines. Do not call tools. Do not output <think>, reasoning, preamble, or a code fence. Start with "${heading}". Limit the report to the most important verified findings and mark unverified areas as "Not assessed". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+        ? `Предыдущая попытка итогового отчёта не завершилась корректно или нарушила формат. Немедленно верни ПОЛНЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит по всем обязательным секциям шаблона. Запрещены: старая структура навыка, квадратные приоритетные метки P0-P3, поля проверки/валидации, roadmap, владельцы, сроки, разделы внешней авторитетности без данных и названия недоступных внешних провайдеров данных. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно включи матрицу охвата проверок, скоркард, Lighthouse/производительность, рендеринг по устройствам, постраничную визуальную проверку, таблицу основных SEO-рисков, рекомендации, ограничения и приложение с доказательствами. Не используй инструменты. Используй только предоставленные доказательства; не добавляй факты о карте, контрасте, iPhone SE, alt, формах или кнопках, если их нет в evidence. Не выводи <think>, рассуждения, преамбулу или code fence. Начни с "${heading}". Формулировки внутри секций делай краткими, но секции не пропускай. В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
+        : `The previous final-report attempt did not complete cleanly or violated the format. Immediately return a FULL DIAGNOSTIC SEO audit using all required template sections. Forbidden: old skill report structure, square P0-P3 priority labels, validation/check-method fields, roadmap, owners, timelines, external-authority sections without data, and unavailable external data-provider names. Every visible heading, table header, status label, and scorecard category label MUST be in English. Include the check coverage matrix, scorecard, Lighthouse/performance diagnostics, rendering by device, page-by-page visual check, main SEO risks table, recommendations, limitations, and evidence appendix. Do not call tools. Use only the provided evidence; do not add facts about maps, contrast, iPhone SE, alt text, forms, or buttons unless they are present in evidence. Do not output <think>, reasoning, preamble, or a code fence. Start with "${heading}". Keep wording inside sections concise, but do not skip sections. End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
   };
 }
 
@@ -295,25 +310,21 @@ function buildContinueFinalReportMessage(language: AuditLanguage): ChatCompletio
     role: "user",
     content:
       language === "ru"
-        ? `Продолжи итоговый ДИАГНОСТИЧЕСКИЙ SEO-аудит ровно с места, где он оборвался. Не повторяй уже написанные секции, заголовок отчёта или преамбулу. Не используй инструменты. Не выводи <think>, рассуждения или code fence. Пиши компактно: заверши только недостающие строки/секции, затем обязательно добавь короткое «Финальное заключение», если его ещё нет. Когда полный отчёт закончен, ОБЯЗАТЕЛЬНО выведи ${FINAL_REPORT_END_MARKER} отдельной последней строкой. Если содержательно продолжать нечего, сразу выведи недостающее финальное заключение и ${FINAL_REPORT_END_MARKER}.`
-        : `Continue the final DIAGNOSTIC SEO audit exactly from where it stopped. Do not repeat already written sections, the report title, or any preamble. Do not call tools. Do not output <think>, reasoning, or a code fence. Write compactly: finish only the missing rows/sections, then add a short "Final conclusion" if it is not already present. When the complete report is finished, you MUST output ${FINAL_REPORT_END_MARKER} on its own final line. If there is nothing meaningful left to add, immediately output the missing final conclusion and ${FINAL_REPORT_END_MARKER}.`,
+        ? `Продолжи итоговый ДИАГНОСТИЧЕСКИЙ SEO-аудит ровно с места, где он оборвался. Не повторяй уже написанные секции, заголовок отчёта или преамбулу. Не используй инструменты. Запрещены старая структура навыка, квадратные приоритетные метки P0-P3, поля проверки/валидации, roadmap, владельцы, сроки, разделы внешней авторитетности без данных и названия недоступных внешних провайдеров данных. Не выводи <think>, рассуждения или code fence. Пиши компактно: заверши только недостающие строки/секции, затем обязательно добавь короткое «Финальное заключение», если его ещё нет. Когда полный отчёт закончен, ОБЯЗАТЕЛЬНО выведи ${FINAL_REPORT_END_MARKER} отдельной последней строкой. Если содержательно продолжать нечего, сразу выведи недостающее финальное заключение и ${FINAL_REPORT_END_MARKER}.`
+        : `Continue the final DIAGNOSTIC SEO audit exactly from where it stopped. Do not repeat already written sections, the report title, or any preamble. Do not call tools. Forbidden: old skill report structure, square P0-P3 priority labels, validation/check-method fields, roadmap, owners, timelines, external-authority sections without data, and unavailable external data-provider names. Do not output <think>, reasoning, or a code fence. Write compactly: finish only the missing rows/sections, then add a short "Final conclusion" if it is not already present. When the complete report is finished, you MUST output ${FINAL_REPORT_END_MARKER} on its own final line. If there is nothing meaningful left to add, immediately output the missing final conclusion and ${FINAL_REPORT_END_MARKER}.`,
   };
 }
 
 function buildFinalContinuationMessages(
   language: AuditLanguage,
-  reportSoFar: string
+  reportSoFar: string,
+  contextMessages: ChatCompletionMessageParam[] = []
 ): ChatCompletionMessageParam[] {
   const tail = reportSoFar.length > FINAL_CONTINUATION_CONTEXT_CHARS
     ? reportSoFar.slice(-FINAL_CONTINUATION_CONTEXT_CHARS)
     : reportSoFar;
   return [
-    {
-      role: "system",
-      content: language === "ru"
-        ? `Ты завершаешь уже начатый диагностический SEO-отчёт. Инструменты недоступны. Не повторяй существующий текст. Все видимые заголовки, заголовки таблиц, статусы и подписи — на русском языке. Разделы постраничной визуальной проверки и рекомендаций по улучшению разрешены и обязательны, если они ещё не были выведены. Без roadmap, владельцев, сроков и бэклога. Итоговый полный отчёт должен закончиться строкой ${FINAL_REPORT_END_MARKER}.`
-        : `You are finishing an already-started diagnostic SEO report. Tools are unavailable. Do not repeat existing text. Every visible heading, table header, status, and label must be in English. The page-by-page visual check and improvement recommendations sections are allowed and required if they have not been output yet. No roadmap, owners, timelines, or backlog. The complete final report must end with ${FINAL_REPORT_END_MARKER}.`,
-    },
+    ...contextMessages,
     {
       role: "assistant",
       content: tail,
@@ -332,6 +343,7 @@ function sanitizeFinalReport(content: string): string {
   const fence = out.match(/^```(?:md|markdown)?\s*\n([\s\S]*?)\n```\s*$/i);
   if (fence?.[1]) out = fence[1].trim();
   out = out.replace(/^markdown\s*\n/i, "").trim();
+  out = normalizeMarkdownTables(out).trim();
   return out;
 }
 
@@ -343,6 +355,113 @@ function stripFinalReportEndMarker(content: string): string {
   return content
     .replace(new RegExp(`\\n?\\s*${FINAL_REPORT_END_MARKER}\\s*$`), "")
     .trim();
+}
+
+function forbiddenReportStructureReason(content: string): string | undefined {
+  const checks: Array<[RegExp, string]> = [
+    [/Топ-\s*5\s+приоритетов/i, "old Top-5 priorities section"],
+    [/Top\s+5\s+priorities/i, "old Top-5 priorities section"],
+    [/\[(?:P0|P1|P2|P3)\]/i, "old P0-P3 priority labels"],
+    [/Метод\s+проверки/i, "old validation-method field"],
+    [/Validation\s+method/i, "old validation-method field"],
+    [/\bOwner\b|\bTimeline\b|\bSprint\b/i, "task/backlog fields"],
+    [/Search\s+Console|Ahrefs|Semrush/i, "unsupported external-data source"],
+    [/backlinks?|бэклинк/i, "unsupported backlink/off-page section"],
+    [/Внешние\s+ссылки\s*\/\s*off-page|off-page/i, "unsupported off-page section"],
+  ];
+  for (const [pattern, reason] of checks) {
+    if (pattern.test(content)) return reason;
+  }
+  return undefined;
+}
+
+function hasMarkdownTableAfter(content: string, heading: string): boolean {
+  const start = content.search(new RegExp(`^##\\s+${heading}\\s*$`, "im"));
+  if (start < 0) return false;
+  const rest = content.slice(start);
+  const next = rest.slice(1).search(/^##\s+/m);
+  const section = next >= 0 ? rest.slice(0, next + 1) : rest;
+  return /^\s*\|.+\|\s*\n\s*\|\s*:?-{3,}:?\s*\|/m.test(section);
+}
+
+function requiredReportStructureReason(content: string): string | undefined {
+  const isRussian = /^#\s+SEO-диагностика:/im.test(content);
+  const isEnglish = /^#\s+SEO diagnostic:/im.test(content);
+
+  if (!isRussian && !isEnglish) return "missing required report title";
+  if (/^\s*\*{1,2}\S{1,3}\s*$/m.test(content)) {
+    return "dangling markdown fragment";
+  }
+
+  const sections = isRussian
+    ? [
+        "Исполнительное заключение",
+        "Снимок состояния SEO",
+        "Матрица охвата проверок",
+        "Скоркард",
+        "Диагностика Lighthouse / производительности",
+        "Рендеринг по устройствам",
+        "Постраничная визуальная проверка",
+        "Анализ по категориям",
+        "Основные SEO-риски",
+        "Рекомендации по улучшению",
+        "Не оценено / ограничения",
+        "Приложение с доказательствами",
+        "Финальное заключение",
+      ]
+    : [
+        "Executive conclusion",
+        "SEO health snapshot",
+        "Check coverage matrix",
+        "Scorecard",
+        "Lighthouse / performance diagnostics",
+        "Rendering by device",
+        "Page-by-page visual check",
+        "Category analysis",
+        "Main SEO risks",
+        "Improvement recommendations",
+        "Not assessed / limitations",
+        "Evidence appendix",
+        "Final conclusion",
+      ];
+
+  let lastIndex = -1;
+  for (const section of sections) {
+    const index = content.search(new RegExp(`^##\\s+${section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "im"));
+    if (index < 0) return `missing required section: ${section}`;
+    if (index < lastIndex) return `section out of order: ${section}`;
+    lastIndex = index;
+  }
+
+  const tableSections = isRussian
+    ? [
+        "Матрица охвата проверок",
+        "Скоркард",
+        "Рендеринг по устройствам",
+        "Постраничная визуальная проверка",
+        "Основные SEO-риски",
+        "Рекомендации по улучшению",
+      ]
+    : [
+        "Check coverage matrix",
+        "Scorecard",
+        "Rendering by device",
+        "Page-by-page visual check",
+        "Main SEO risks",
+        "Improvement recommendations",
+      ];
+
+  for (const section of tableSections) {
+    if (!hasMarkdownTableAfter(content, section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))) {
+      return `missing markdown table in section: ${section}`;
+    }
+  }
+
+  return undefined;
+}
+
+function reportFormatIssue(content: string): string | undefined {
+  return forbiddenReportStructureReason(content) ?? requiredReportStructureReason(content);
 }
 
 function finalReportNeedsContinuation(content: string, finishReason: string | null): boolean {
@@ -358,6 +477,7 @@ function isUsableFinalReport(content: string): boolean {
   const sanitized = sanitizeFinalReport(content);
   return (
     sanitized.length >= MIN_USABLE_FINAL_REPORT_CHARS &&
+    reportFormatIssue(sanitized) === undefined &&
     /SEO Audit Report|SEO-аудит|SEO-диагностика|SEO diagnostic|Scorecard|Скоркард|Coverage matrix|Матрица охвата|Executive conclusion|Исполнительное заключение/i.test(sanitized)
   );
 }
@@ -454,8 +574,15 @@ function canRunTool(name: string, stats: ToolStats): { ok: boolean; reason?: str
 
 function recordToolCall(name: string, stats: ToolStats): void {
   stats.total += 1;
-  if (name in stats && name !== "total" && name !== "denied" && name !== "cacheHits" && name !== "skippedStaticAssets") {
-    stats[name as keyof Omit<ToolStats, "total" | "denied" | "cacheHits" | "skippedStaticAssets">] += 1;
+  if (
+    name in stats &&
+    name !== "total" &&
+    name !== "denied" &&
+    name !== "cacheHits" &&
+    name !== "skippedStaticAssets" &&
+    name !== "skippedBudget"
+  ) {
+    stats[name as keyof Omit<ToolStats, "total" | "denied" | "cacheHits" | "skippedStaticAssets" | "skippedBudget">] += 1;
   }
 }
 
@@ -1292,8 +1419,8 @@ function buildFinalEvidenceUserMessage(
     role: "user",
     content:
       language === "ru"
-        ? `Целевой URL: ${url}\n\nКомпактная сводка собранных доказательств:\n\n${evidenceJson}\n\nСформируй итоговую SEO-диагностику по шаблону из системного промпта, используя только эти доказательства. Не вызывай инструменты. Включи постраничную визуальную проверку и раздел рекомендаций по улучшению на основе доказательств. Без roadmap, владельцев, сроков и бэклога. Не выводи <think>, рассуждения, скрытые заметки или code fence. Начни сразу с "${heading}". Если данных не хватает, явно укажи ограничение и не выдумывай факты.`
-        : `Target URL: ${url}\n\nCompact summary of collected evidence:\n\n${evidenceJson}\n\nProduce the final SEO diagnostic report using the system template, based only on this evidence. Do not call tools. Include the page-by-page visual check and evidence-based improvement recommendations section. No roadmap, owners, timelines, or backlog. Do not output <think>, reasoning, hidden notes, or a code fence. Start directly with "${heading}". If data is insufficient, state the limitation clearly and do not invent facts.`,
+        ? `Целевой URL: ${url}\n\nКомпактная сводка собранных доказательств:\n\n${evidenceJson}\n\nСформируй итоговую SEO-диагностику строго по шаблону из системного промпта, используя только эти доказательства. Не вызывай инструменты. Включи постраничную визуальную проверку и раздел рекомендаций по улучшению на основе доказательств. Запрещены старая структура навыка, квадратные приоритетные метки P0-P3, поля проверки/валидации, roadmap, владельцы, сроки, разделы внешней авторитетности без данных и названия недоступных внешних провайдеров данных. Не выводи <think>, рассуждения, скрытые заметки или code fence. Пиши нейтрально, без «безупречный/идеальный/эталонный». Начни сразу с "${heading}". Если данных не хватает, явно укажи ограничение без упоминания недоступных внешних провайдеров и не выдумывай факты. В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
+        : `Target URL: ${url}\n\nCompact summary of collected evidence:\n\n${evidenceJson}\n\nProduce the final SEO diagnostic report strictly using the system template, based only on this evidence. Do not call tools. Include the page-by-page visual check and evidence-based improvement recommendations section. Forbidden: old skill report structure, square P0-P3 priority labels, validation/check-method fields, roadmap, owners, timelines, external-authority sections without data, and unavailable external data-provider names. Do not output <think>, reasoning, hidden notes, or a code fence. Use neutral diagnostic language; avoid "perfect", "flawless", or "best-in-class". Start directly with "${heading}". If data is insufficient, state the limitation without naming unavailable external providers and do not invent facts. End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
   };
 }
 
@@ -1309,13 +1436,12 @@ function buildAgentUserMessage(
   language: AuditLanguage
 ): ChatCompletionMessageParam {
   const evidenceJson = JSON.stringify(evidenceSummary);
-  const heading = reportHeading(language);
   return {
     role: "user",
     content:
       language === "ru"
-        ? `Целевой URL: ${url}\n\nНиже приведена компактная сводка автоматически собранных предварительных доказательств (preflight):\n\n${evidenceJson}\n\nТвоя задача:\n1. Используй приведённую выше сводку как отправную точку.\n2. Свободно вызывай любые из доступных TOOLS, чтобы собрать недостающие доказательства. Можно делать несколько вызовов подряд в одном шаге.\n3. Прежде чем переходить к итоговому ответу, убедись, что КАЖДАЯ URL-only область/инструмент из доступных упомянуты в матрице охвата проверок с явным статусом «Проверено», «Частично», «Не оценено» или «Требует данных». Не добавляй Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.\n4. Когда доказательств достаточно, верни ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательному шаблону из системного промпта обычным текстом (БЕЗ вызова TOOLS), включая постраничную визуальную проверку и раздел рекомендаций по улучшению на основе доказательств. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). Без roadmap, владельцев и сроков. Начни с "${heading}" и заверши ${FINAL_REPORT_END_MARKER} на отдельной последней строке.`
-        : `Target URL: ${url}\n\nBelow is a compact JSON summary of the automatically collected preflight evidence:\n\n${evidenceJson}\n\nYour task:\n1. Use the evidence summary above as the starting point.\n2. You may freely call any of the available TOOLS to gather missing evidence. You may make multiple tool calls in a single step.\n3. Before producing the final answer, make sure EVERY available URL-only audit area / tool group is mentioned in the Check coverage matrix with an explicit status of "Checked", "Partially checked", "Not assessed", or "Requires data". Do not add Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.\n4. Once the evidence is sufficient, return the FINAL DIAGNOSTIC SEO audit following the required template from the system prompt as plain text (no TOOL calls), including the page-by-page visual check and evidence-based improvement recommendations section. Every visible heading, table header, status label, and scorecard category label MUST be in English (only established technical terms allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). No roadmap, owners, or timelines. Start with "${heading}" and end with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+        ? `Целевой URL: ${url}\n\nНиже приведена компактная сводка автоматически собранных предварительных доказательств (preflight):\n\n${evidenceJson}\n\nТвоя задача в этом DISCOVERY-шаге:\n1. Используй приведённую выше сводку как отправную точку.\n2. Вызывай только нужные TOOLS, чтобы собрать недостающие доказательства. Можно делать несколько вызовов подряд в одном шаге.\n3. НЕ ПИШИ итоговый отчёт в discovery-режиме. Полный отчёт будет сформирован отдельным final-режимом со строгим шаблоном.\n4. Когда доказательств достаточно и дополнительных TOOLS не нужно, верни только строку READY_FOR_FINAL_REPORT без markdown, без заголовков и без отчёта.\n5. Не добавляй в любые ответы недоступные внешние кабинеты, загруженные отчёты или внешние экспортные файлы.`
+        : `Target URL: ${url}\n\nBelow is a compact JSON summary of the automatically collected preflight evidence:\n\n${evidenceJson}\n\nYour task in this DISCOVERY step:\n1. Use the evidence summary above as the starting point.\n2. Call only the TOOLS needed to gather missing evidence. You may make multiple tool calls in a single step.\n3. DO NOT write the final report in discovery mode. The full report will be produced by a separate final mode with the strict template.\n4. Once evidence is sufficient and no more TOOLS are needed, return only the line READY_FOR_FINAL_REPORT with no markdown, headings, or report text.\n5. Do not mention unavailable external data inputs or backlink exports in any answer.`,
   };
 }
 
@@ -1969,9 +2095,22 @@ async function runSingleModelRequest(
     new Error(
       `Processing stream was idle for ${modelWaitMs}ms at step ${step}`
     );
+  // Hard wall-clock cap for this single streamed request. Unlike the idle
+  // timer (which resets on every chunk), this one runs for the entire
+  // duration of the call so a slowly-but-continuously streaming model still
+  // gets cut off before the audit hangs for minutes.
+  const stepMaxMs =
+    mode === "discovery"
+      ? DISCOVERY_STEP_MAX_MS
+      : mode === "final"
+        ? FINAL_STEP_MAX_MS
+        : EMERGENCY_STEP_MAX_MS;
   const requestController = new AbortController();
   const abortRequest = () => requestController.abort();
   signal?.addEventListener("abort", abortRequest, { once: true });
+  const stepHardTimer = setTimeout(() => {
+    requestController.abort();
+  }, stepMaxMs);
   const withModelIdleTimeout = async <T,>(promise: Promise<T>): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -1992,7 +2131,13 @@ async function runSingleModelRequest(
   const request = {
     model: modelId,
     messages,
-    ...(mode === "discovery" ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
+    ...(mode === "discovery"
+      ? {
+          tools: TOOLS,
+          tool_choice: "auto" as const,
+          parallel_tool_calls: false as const,
+        }
+      : {}),
     temperature: mode === "final" ? 0 : 0.2,
     max_tokens: maxTokens,
     stream: true as const,
@@ -2012,6 +2157,7 @@ async function runSingleModelRequest(
   let firstChunkMs = 0;
   let lastProgressAt = 0;
   let warnedMissingToolCallIndex = false;
+  let warnedNoProgress = false;
   let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
 
   const emitProgress = (force = false) => {
@@ -2050,6 +2196,24 @@ async function runSingleModelRequest(
       const chunk = next.value;
       chunkCount += 1;
       if (firstChunkMs === 0) firstChunkMs = Date.now() - startedAt;
+
+      // No-progress guard: if we have been streaming for a while without
+      // producing any tool call or real (non-whitespace, non-think) content,
+      // there is no point waiting for the rest. Bail out so the caller can
+      // try the next processing route instead of hanging.
+      if (
+        mode === "discovery" &&
+        !warnedNoProgress &&
+        Date.now() - startedAt > NO_PROGRESS_GRACE_MS &&
+        toolCalls.size === 0 &&
+        content.trim().length < 50
+      ) {
+        warnedNoProgress = true;
+        requestController.abort();
+        throw new Error(
+          `No tool-call progress within ${NO_PROGRESS_GRACE_MS}ms at step ${step}`
+        );
+      }
 
       if (chunk.usage) {
         usage = {
@@ -2092,7 +2256,7 @@ async function runSingleModelRequest(
       emitProgress(false);
     }
   } catch (err) {
-    const sanitizedPartial = mode === "final" ? sanitizeFinalReport(content) : content;
+    const sanitizedPartial = sanitizeFinalReport(content);
     if (content.trim().length > 0) {
       const msg = err instanceof Error ? err.message : String(err);
       finishReason = "timeout_partial";
@@ -2109,6 +2273,7 @@ async function runSingleModelRequest(
       throw err;
     }
   } finally {
+    clearTimeout(stepHardTimer);
     signal?.removeEventListener("abort", abortRequest);
   }
 
@@ -2308,7 +2473,7 @@ export async function runAudit({
     // ----- 2. Build the initial messages for the unrestricted agent loop -----
     const initialEvidenceSummary = buildEvidenceSummary(evidence);
     const messages: ChatCompletionMessageParam[] = [
-      buildSystemPrompt(skillText, language),
+      buildSystemPrompt(skillText, language, "discovery"),
       buildAgentUserMessage(url, initialEvidenceSummary, language),
     ];
     // Simple tool result cache, keyed by tool name + JSON-stringified args.
@@ -2324,7 +2489,266 @@ export async function runAudit({
     // and respect the overall time / context / iteration caps.
     let agentStep = 0;
     let emergencyTried = false;
-    let finalContinuationCount = 0;
+    let finalReportAttempted = false;
+    let followUpToolCalls = 0;
+
+    const tryFinalReportFromEvidence = async (reason: string): Promise<void> => {
+      if (reportDone || finalReportAttempted || isAborted(signal)) return;
+      finalReportAttempted = true;
+      emit("status", {
+        message: "Discovery ended; generating the final report from collected evidence...",
+        phase: "processing:final report",
+      });
+      emit("debug", {
+        message: "Post-loop final report fallback started",
+        data: { reason, agentStep },
+      });
+
+      try {
+        const finalEvidenceSummary = buildEvidenceSummary(evidence);
+        const evidenceJson = JSON.stringify(finalEvidenceSummary);
+        const heading = reportHeading(language);
+        const draftMessages: ChatCompletionMessageParam[] = [
+          {
+            role: "system",
+            content: language === "ru"
+              ? `Ты SEO-аудитор. Инструменты недоступны. Напиши СЫРОЙ диагностический SEO-отчёт по evidence: факты, риски, визуальные наблюдения, Lighthouse/производительность, рекомендации. НЕ следуй строгому шаблону и не пытайся заполнить все таблицы. Не выдумывай факты. Не используй roadmap, владельцев, сроки, внешние провайдеры или бэклинк-разделы. Не выводи <think> или code fence. В конце выведи ${FINAL_REPORT_END_MARKER} отдельной строкой.`
+              : `You are an SEO auditor. Tools are unavailable. Write a RAW diagnostic SEO report from the evidence: facts, risks, visual observations, Lighthouse/performance, and recommendations. Do NOT follow the strict template and do not try to fill every table. Do not invent facts. Do not include roadmap, owners, timelines, external providers, or backlink/off-page sections. Do not output <think> or code fences. End with ${FINAL_REPORT_END_MARKER} on its own line.`,
+          },
+          {
+            role: "user",
+            content: language === "ru"
+              ? `Целевой URL: ${url}\n\nEvidence summary:\n${evidenceJson}\n\nНапиши сырой диагностический отчёт. Начни с "${heading}".`
+              : `Target URL: ${url}\n\nEvidence summary:\n${evidenceJson}\n\nWrite the raw diagnostic report. Start with "${heading}".`,
+          },
+        ];
+        const formatterContextMessages: ChatCompletionMessageParam[] = [
+          buildSystemPrompt(skillText, language, "final"),
+          {
+            role: "user",
+            content: language === "ru"
+              ? `Целевой URL: ${url}\n\nEvidence summary:\n${evidenceJson}\n\nТы форматирующий редактор. Приведи сырой отчёт пользователя к СТРОГОМУ шаблону из system prompt. Не добавляй новые факты; используй evidence и сырой отчёт. Если для секции нет данных, пиши «Не оценено» или «По проверенным данным проблем не обнаружено». Все обязательные секции и Markdown-таблицы должны быть на месте. В конце выведи ${FINAL_REPORT_END_MARKER} отдельной строкой.`
+              : `Target URL: ${url}\n\nEvidence summary:\n${evidenceJson}\n\nYou are a formatting editor. Convert the user's raw report to the STRICT template from the system prompt. Do not add new facts; use the evidence and raw report only. If a section lacks data, write "Not assessed" or "no issue was found in the checked evidence". All required sections and Markdown tables must be present. End with ${FINAL_REPORT_END_MARKER} on its own line.`,
+          },
+        ];
+        type CompleteTextResult = {
+          text?: string;
+          candidate?: string;
+          issue?: string;
+        };
+        const completeText = async ({
+          label,
+          initialMessages,
+          continuationContextMessages,
+          startStep,
+          waitMs,
+          maxTokens,
+          requireMarker,
+          validate,
+        }: {
+          label: string;
+          initialMessages: ChatCompletionMessageParam[];
+          continuationContextMessages: ChatCompletionMessageParam[];
+          startStep: number;
+          waitMs: number;
+          maxTokens: number;
+          requireMarker: boolean;
+          validate: boolean;
+        }): Promise<CompleteTextResult> => {
+          const initialRequestBytes = approxBytes({ messages: initialMessages });
+          emit("debug", {
+            message: `${label} final report request prepared`,
+            data: { messages: initialMessages.length, requestBytes: initialRequestBytes },
+          });
+          const initial = await runModelStep(
+            openai,
+            modelIds,
+            initialMessages,
+            startStep,
+            "final",
+            initialRequestBytes,
+            waitMs,
+            maxTokens,
+            signal,
+            emit,
+            setPhase
+          );
+
+          let finalReportContent = sanitizeFinalReport(initial.content);
+          let finishReason = initial.finishReason;
+          let continuationCount = 0;
+          const needsMore = () =>
+            finishReason === "length" ||
+            finishReason === "timeout_partial" ||
+            finishReason === "timeout_unusable_partial" ||
+            (requireMarker && !hasFinalReportEndMarker(finalReportContent));
+          while (needsMore()) {
+            continuationCount += 1;
+            if (continuationCount > MAX_FINAL_CONTINUATIONS) {
+              emit("debug", {
+                message: `${label} final report continuation limit reached`,
+                data: {
+                  continuations: continuationCount - 1,
+                  max: MAX_FINAL_CONTINUATIONS,
+                  finishReason,
+                  hasEndMarker: hasFinalReportEndMarker(finalReportContent),
+                  contentBytes: finalReportContent.length,
+                },
+              });
+              break;
+            }
+            emit("status", {
+              message: `Final report is incomplete; requesting no-tool continuation ${continuationCount}/${MAX_FINAL_CONTINUATIONS}...`,
+              phase: "processing:final report",
+            });
+            const continuationMessages = buildFinalContinuationMessages(
+              language,
+              finalReportContent,
+              continuationContextMessages
+            );
+            const continuation = await runModelStep(
+              openai,
+              modelIds,
+              continuationMessages,
+              startStep + continuationCount,
+              "final",
+              approxBytes({ messages: continuationMessages }),
+              waitMs,
+              maxTokens,
+              signal,
+              emit,
+              setPhase
+            );
+            const continuationText = sanitizeFinalReport(continuation.content);
+            if (continuationText.length === 0) {
+              finishReason = continuation.finishReason;
+              break;
+            }
+            finalReportContent = `${finalReportContent.trim()}\n\n${continuationText.trim()}`.trim();
+            finishReason = continuation.finishReason;
+          }
+
+          if (needsMore()) {
+            emit("debug", {
+              message: `${label} final report still incomplete`,
+              data: {
+                finishReason,
+                hasEndMarker: hasFinalReportEndMarker(finalReportContent),
+                contentBytes: finalReportContent.length,
+              },
+            });
+            return { candidate: stripFinalReportEndMarker(finalReportContent), issue: "incomplete final report" };
+          }
+
+          const reportForDisplay = stripFinalReportEndMarker(finalReportContent);
+          if (!validate || isUsableFinalReport(reportForDisplay)) {
+            return { text: reportForDisplay };
+          }
+          const formatIssue = reportFormatIssue(reportForDisplay);
+          emit("debug", {
+            message: `${label} final report rejected by format validator`,
+            data: {
+              reason: formatIssue ?? "not usable",
+              contentBytes: reportForDisplay.length,
+            },
+          });
+          return { candidate: reportForDisplay, issue: formatIssue ?? "not usable" };
+        };
+
+        emit("status", { message: "Writing draft report...", phase: "processing:draft report" });
+        const draft = await completeText({
+          label: "Draft",
+          initialMessages: draftMessages,
+          continuationContextMessages: draftMessages,
+          startStep: agentStep + 1,
+          waitMs: PER_FINAL_MODEL_WAIT_MS,
+          maxTokens: MAX_FINAL_TOKENS,
+          requireMarker: false,
+          validate: false,
+        });
+
+        const draftReport = draft.text ?? draft.candidate;
+        if (!draftReport) {
+          emit("error", { message: "Audit ended without a draft report." });
+          return;
+        }
+
+        emit("status", { message: "Formatting final report...", phase: "processing:format report" });
+        const formatMessages: ChatCompletionMessageParam[] = [
+          ...formatterContextMessages,
+          { role: "user", content: draftReport },
+        ];
+        const formatted = await completeText({
+          label: "Formatter",
+          initialMessages: formatMessages,
+          continuationContextMessages: formatMessages,
+          startStep: agentStep + 10,
+          waitMs: PER_FINAL_MODEL_WAIT_MS,
+          maxTokens: MAX_FINAL_TOKENS,
+          requireMarker: true,
+          validate: true,
+        });
+        if (formatted.text) {
+          setPhase("report");
+          emit("status", { message: "Generating final report...", phase: "report" });
+          emit("done", { report: formatted.text });
+          reportDone = true;
+          return;
+        }
+
+        if (!emergencyTried) {
+          emergencyTried = true;
+          emit("status", {
+            message:
+              "Final report structure needs repair; fixing format only.",
+            phase: "report",
+          });
+          const repairIssue = formatted.issue ?? "format validator failed";
+          const repairCandidate = formatted.candidate ?? draftReport;
+          const repairMessages: ChatCompletionMessageParam[] = [
+            ...formatterContextMessages,
+            {
+              role: "user",
+              content: language === "ru"
+                ? `Validator issue: ${repairIssue}\n\nИсправь ТОЛЬКО структуру и Markdown текущего отчёта ниже. Не добавляй новые SEO-факты, не меняй выводы без необходимости. Добавь недостающие обязательные секции/таблицы; если данных нет, ставь «Не оценено» или «По проверенным данным проблем не обнаружено». Верни полный исправленный отчёт целиком.\n\nТекущий отчёт:\n${repairCandidate}`
+                : `Validator issue: ${repairIssue}\n\nFix ONLY the structure and Markdown of the current report below. Do not add new SEO facts or change conclusions unless necessary. Add missing required sections/tables; if data is absent, use "Not assessed" or "no issue was found in the checked evidence". Return the full corrected report.\n\nCurrent report:\n${repairCandidate}`,
+            },
+          ];
+          const repaired = await completeText({
+            label: "Repair",
+            initialMessages: repairMessages,
+            continuationContextMessages: repairMessages,
+            startStep: agentStep + 20,
+            waitMs: PER_EMERGENCY_FINAL_MODEL_WAIT_MS,
+            maxTokens: MAX_EMERGENCY_FINAL_TOKENS,
+            requireMarker: true,
+            validate: true,
+          });
+          if (repaired.text) {
+            setPhase("report");
+            emit("status", { message: "Generating final report...", phase: "report" });
+            emit("done", { report: repaired.text });
+            reportDone = true;
+            return;
+          }
+        }
+
+        emit("error", {
+          message: "Audit ended without a usable final report.",
+        });
+      } catch (err) {
+        emit("debug", {
+          message: "Post-loop final report fallback failed",
+          data: {
+            error: err instanceof Error ? err.message : String(err),
+            name: err instanceof Error ? err.name : undefined,
+          },
+        });
+        emit("error", {
+          message: "Audit ended without a final report.",
+        });
+      }
+    };
 
     while (true) {
       if (isAborted(signal)) {
@@ -2338,6 +2762,13 @@ export async function runAudit({
           message: "Audit stopped by time budget. No final report was produced.",
         });
         return;
+      }
+      if (agentStep > MAX_AGENT_STEPS) {
+        emit("debug", {
+          message: "Agent step cap reached; stopping discovery loop",
+          data: { agentStep, max: MAX_AGENT_STEPS },
+        });
+        break;
       }
 
       // Context check / compaction gate: refuse to send another request when
@@ -2394,75 +2825,8 @@ export async function runAudit({
               "Discovery step failed; retrying as a no-tool final report with compact evidence...",
             phase: "processing:final report",
           });
-          try {
-            const finalEvidenceSummary = buildEvidenceSummary(evidence);
-            const finalMessages: ChatCompletionMessageParam[] = [
-              buildSystemPrompt(skillText, language),
-              buildFinalEvidenceUserMessage(url, finalEvidenceSummary, language),
-            ];
-            const finalRequestBytes = approxBytes({ messages: finalMessages });
-            emit("debug", {
-              message: "Fallback final report request prepared",
-              data: { messages: finalMessages.length, requestBytes: finalRequestBytes },
-            });
-            const fallbackFinal = await runModelStep(
-              openai,
-              modelIds,
-              finalMessages,
-              agentStep,
-              "final",
-              finalRequestBytes,
-              PER_FINAL_MODEL_WAIT_MS,
-              MAX_FINAL_TOKENS,
-              signal,
-              emit,
-              setPhase
-            );
-            let finalReportContent = sanitizeFinalReport(fallbackFinal.content);
-            if (finalReportNeedsContinuation(finalReportContent, fallbackFinal.finishReason)) {
-              const continuationMessages = buildFinalContinuationMessages(language, finalReportContent);
-              const continuation = await runModelStep(
-                openai,
-                modelIds,
-                continuationMessages,
-                agentStep + 1,
-                "final",
-                approxBytes({ messages: continuationMessages }),
-                PER_FINAL_MODEL_WAIT_MS,
-                MAX_FINAL_TOKENS,
-                signal,
-                emit,
-                setPhase
-              );
-              const continuationText = sanitizeFinalReport(continuation.content);
-              if (continuationText.length > 0) {
-                finalReportContent = `${finalReportContent.trim()}\n\n${continuationText.trim()}`.trim();
-              }
-            }
-            const reportForDisplay = stripFinalReportEndMarker(finalReportContent);
-            if (isUsableFinalReport(reportForDisplay)) {
-              setPhase("report");
-              emit("status", { message: "Generating final report...", phase: "report" });
-              emit("done", { report: reportForDisplay });
-              reportDone = true;
-              return;
-            }
-            emit("debug", {
-              message: "Fallback final report was not usable",
-              data: {
-                contentBytes: finalReportContent.length,
-                hasEndMarker: hasFinalReportEndMarker(finalReportContent),
-              },
-            });
-          } catch (fallbackErr) {
-            emit("debug", {
-              message: "Fallback final report failed",
-              data: {
-                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
-                name: fallbackErr instanceof Error ? fallbackErr.name : undefined,
-              },
-            });
-          }
+          await tryFinalReportFromEvidence("agent_step_1_failed");
+          if (reportDone) return;
         }
         emit("error", {
           message: `Agent step ${agentStep} failed: ${msg}`,
@@ -2489,6 +2853,27 @@ export async function runAudit({
             emit("error", { message: "Audit aborted by client" });
             return;
           }
+
+          if (followUpToolCalls >= MAX_FOLLOWUP_TOOL_CALLS) {
+            toolStats.skippedBudget += 1;
+            const skipMsg = `Skipped: follow-up tool budget exhausted (${MAX_FOLLOWUP_TOOL_CALLS} max). Generate the final report from collected evidence.`;
+            emit("debug", {
+              message: "Skipped tool call: follow-up budget exhausted",
+              data: {
+                name: toolCall.function.name,
+                used: followUpToolCalls,
+                max: MAX_FOLLOWUP_TOOL_CALLS,
+              },
+            });
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: skipMsg }),
+            });
+            continue;
+          }
+
+          followUpToolCalls += 1;
 
           let args: Record<string, unknown> = {};
           try {
@@ -2556,152 +2941,20 @@ export async function runAudit({
         continue;
       }
 
-      // ----- Final-report branch -----
-      // No tool calls were returned, so the assistant's text content is the
-      // final report candidate. Apply the same marker/finish-reason rules
-      // used previously: incomplete -> ask for continuation; complete -> emit
-      // done; unusable -> try the compact emergency retry once.
-      const sanitized = sanitizeFinalReport(result.content);
-      let finalReportContent = sanitized;
-
-      while (finalReportNeedsContinuation(finalReportContent, result.finishReason)) {
-        finalContinuationCount += 1;
-        if (finalContinuationCount > MAX_FINAL_CONTINUATIONS) {
-          emit("debug", {
-            message: "Final report continuation limit reached",
-            data: {
-              continuations: finalContinuationCount - 1,
-              max: MAX_FINAL_CONTINUATIONS,
-              finishReason: result.finishReason,
-              hasEndMarker: hasFinalReportEndMarker(finalReportContent),
-              contentBytes: finalReportContent.length,
-            },
-          });
-          break;
-        }
-        const remainingAtCont = remainingAuditMs(auditStartedAt);
-        if (auditHasTimeBudget() && remainingAtCont <= 10_000) {
-          emit("debug", {
-            message: "Skipping final report continuation due to low time budget",
-            data: { remainingMs: remainingAtCont },
-          });
-          break;
-        }
-        emit("status", {
-          message: `Final report is incomplete; requesting no-tool continuation ${finalContinuationCount}/${MAX_FINAL_CONTINUATIONS}...`,
-              phase: "processing:final report",
-        });
-        emit("debug", {
-          message: "Final report needs continuation",
-          data: {
-            finishReason: result.finishReason,
-            hasEndMarker: hasFinalReportEndMarker(finalReportContent),
-            contentBytes: finalReportContent.length,
-            agentStep,
-            continuation: finalContinuationCount,
-          },
-        });
-        const continuationMessages = buildFinalContinuationMessages(language, finalReportContent);
-        const continuationRequestBytes = approxBytes({ messages: continuationMessages });
-        const continuation = await runModelStep(
-          openai,
-          modelIds,
-          continuationMessages,
-          agentStep + finalContinuationCount,
-          "final",
-          continuationRequestBytes,
-          auditHasTimeBudget()
-            ? Math.min(PER_MODEL_WAIT_MS, Math.max(1, remainingAtCont))
-            : PER_MODEL_WAIT_MS,
-          MAX_FINAL_TOKENS,
-          signal,
-          emit,
-          setPhase
-        );
-        const continuationText = sanitizeFinalReport(continuation.content);
-        if (continuationText.length === 0) {
-          result.finishReason = continuation.finishReason;
-          break;
-        }
-        finalReportContent = `${finalReportContent.trim()}\n\n${continuationText.trim()}`.trim();
-        result.finishReason = continuation.finishReason;
-      }
-
-      if (finalReportNeedsContinuation(finalReportContent, result.finishReason)) {
-        emit("error", {
-          message: "Final report did not complete with the required end marker after continuation attempts.",
-        });
-        break;
-      }
-
-      const reportForDisplay = stripFinalReportEndMarker(finalReportContent);
-      if (!isUsableFinalReport(reportForDisplay)) {
-        if (!emergencyTried) {
-          const elapsedEmergency = Date.now() - auditStartedAt;
-          emergencyTried = true;
-          emit("status", {
-            message:
-              "Final report was not usable; retrying once with compact emergency instructions.",
-            phase: "report",
-          });
-          emit("debug", {
-            message: "Retrying final report after unusable output",
-              data: {
-                finishReason: result.finishReason,
-                contentBytes: finalReportContent.length,
-                elapsedMs: elapsedEmergency,
-                retryWaitMs: PER_EMERGENCY_FINAL_MODEL_WAIT_MS,
-                retryMaxTokens: MAX_EMERGENCY_FINAL_TOKENS,
-              },
-            });
-          const emergencyMessages: ChatCompletionMessageParam[] = [
-            buildSystemPrompt(skillText, language),
-            buildEmergencyFinalReportMessage(language),
-          ];
-          const emergency = await runModelStep(
-            openai,
-            modelIds,
-            emergencyMessages,
-            agentStep + finalContinuationCount + 1,
-            "final",
-            approxBytes({ messages: emergencyMessages }),
-            PER_MODEL_WAIT_MS,
-            MAX_EMERGENCY_FINAL_TOKENS,
-            signal,
-            emit,
-            setPhase
-          );
-          finalReportContent = sanitizeFinalReport(emergency.content);
-          if (finalReportNeedsContinuation(finalReportContent, emergency.finishReason)) {
-            emit("error", {
-              message: "Emergency final report did not complete with the required end marker.",
-            });
-            break;
-          }
-          const emergencyForDisplay = stripFinalReportEndMarker(finalReportContent);
-          if (isUsableFinalReport(emergencyForDisplay)) {
-            setPhase("report");
-            emit("status", { message: "Generating final report...", phase: "report" });
-            emit("done", { report: emergencyForDisplay });
-            reportDone = true;
-            break;
-          }
-          emit("error", {
-            message: "Emergency final report was complete but not usable.",
-          });
-          break;
-        }
-        emit("error", {
-          message: "Final report mode produced no usable report content.",
-        });
-        break;
-      }
-
-      setPhase("report");
-      emit("status", { message: "Generating final report...", phase: "report" });
-      emit("done", { report: reportForDisplay });
-      reportDone = true;
+      emit("debug", {
+        message: "Discovery returned content without tool calls; switching to strict final report mode",
+        data: {
+          agentStep,
+          contentBytes: result.content.length,
+          finishReason: result.finishReason,
+        },
+      });
+      await tryFinalReportFromEvidence("discovery_returned_no_tool_calls");
       break;
+    }
+
+    if (!reportDone) {
+      await tryFinalReportFromEvidence("agent_loop_exited_without_report");
     }
 
     if (toolErrors.length > 0) {

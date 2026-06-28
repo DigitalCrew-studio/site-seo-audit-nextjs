@@ -8,6 +8,7 @@ import { X, FileText, Image as ImageIcon } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useAuditStore } from "@/store/auditStore";
 import { loadAuditImage } from "@/lib/audit-image-store";
+import { normalizeMarkdownTables } from "@/lib/markdown";
 import type { ReportImageEntry } from "@/lib/types";
 
 const markdownComponents: Components = {
@@ -297,6 +298,7 @@ export function ReportDialog() {
   const title = language === "ru" ? "SEO-диагностика" : "SEO diagnostic report";
   const formatLabel = "markdown";
   const closeLabel = language === "ru" ? "Закрыть" : "Close";
+  const displayReport = useMemo(() => normalizeMarkdownTables(report), [report]);
 
   useEffect(() => {
     if (!reportOpen) return;
@@ -350,7 +352,7 @@ export function ReportDialog() {
                 remarkPlugins={[remarkGfm]}
                 components={markdownComponents}
               >
-                {report}
+                {displayReport}
               </ReactMarkdown>
               <VisualEvidence images={reportImages} language={language} />
             </div>

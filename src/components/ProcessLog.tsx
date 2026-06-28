@@ -183,7 +183,7 @@ function getPillFromLogs(
   if (running || auditStatus === "running") {
     const lastTool = [...logs].reverse().find((l) => l.type === "tool");
     if (lastTool) {
-      return { tone: "accent", text: "Идёт инструмент", pulse: true };
+      return { tone: "accent", text: "Идёт вызов", pulse: true };
     }
     return { tone: "accent", text: "Идёт", pulse: true };
   }
@@ -202,7 +202,7 @@ function getPillFromLogs(
   }
   const lastTool = [...logs].reverse().find((l) => l.type === "tool");
   if (lastTool) {
-    return { tone: "accent", text: "Идёт инструмент", pulse: true };
+    return { tone: "accent", text: "Идёт вызов", pulse: true };
   }
   return { tone: "positive", text: "Завершён", pulse: false };
 }

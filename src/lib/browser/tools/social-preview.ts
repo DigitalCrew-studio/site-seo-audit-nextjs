@@ -18,6 +18,10 @@ export async function inspectSocialPreview(
   const finalUrl = page.url();
 
   const data = await page.evaluate(() => {
+    // page.evaluate runs in the browser context, so it has no access to
+    // the outer MAX_LOCALE_ALTERNATES const. Mirror it here.
+    const MAX_LOCALE_ALTERNATES = 5;
+
     const getMeta = (sel: string): string => {
       const el = document.querySelector(sel);
       return el ? el.getAttribute("content") || "" : "";
@@ -171,7 +175,10 @@ export async function inspectSocialPreview(
     let dims: Record<string, { width: number; height: number } | null> = {};
     try {
       dims = await page.evaluate(
-        async (urls: string[]) => {
+        async (args: {
+          urls: string[];
+          IMAGE_DECODE_TIMEOUT_MS: number;
+        }) => {
           const loadOne = (
             u: string
           ): Promise<{ width: number; height: number } | null> =>
@@ -179,7 +186,7 @@ export async function inspectSocialPreview(
               const img = new Image();
               const timer = setTimeout(
                 () => resolve(null),
-                IMAGE_DECODE_TIMEOUT_MS
+                args.IMAGE_DECODE_TIMEOUT_MS
               );
               img.onload = () => {
                 clearTimeout(timer);
@@ -195,11 +202,14 @@ export async function inspectSocialPreview(
               img.src = u;
             });
           const entries = await Promise.all(
-            urls.map(async (u) => [u, await loadOne(u)] as const)
+            args.urls.map(async (u) => [u, await loadOne(u)] as const)
           );
           return Object.fromEntries(entries);
         },
-        targets.map((t) => t.url)
+        {
+          urls: targets.map((t) => t.url),
+          IMAGE_DECODE_TIMEOUT_MS,
+        }
       );
     } catch {
       dims = {};
