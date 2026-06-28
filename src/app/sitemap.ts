@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { KNOWLEDGE_ARTICLES } from "@/lib/knowledgeArticles";
 import { SITE_URL, withHreflang } from "@/lib/site";
 
 const LAST_MODIFIED = new Date(
@@ -6,6 +7,21 @@ const LAST_MODIFIED = new Date(
 );
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  const knowledgeArticleRoutes: MetadataRoute.Sitemap = KNOWLEDGE_ARTICLES.map(
+    (article) => {
+      const path = `/knowledge/${article.slug}`;
+      return {
+        url: `${SITE_URL}${path}`,
+        lastModified: LAST_MODIFIED,
+        changeFrequency: "monthly",
+        priority: 0.65,
+        alternates: {
+          languages: withHreflang(path),
+        },
+      };
+    }
+  );
+
   return [
     {
       url: `${SITE_URL}/`,
@@ -50,6 +66,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
       alternates: {
         languages: withHreflang("/knowledge"),
+      },
+    },
+    ...knowledgeArticleRoutes,
+    {
+      url: `${SITE_URL}/knowledge/seo-terms`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.55,
+      alternates: {
+        languages: withHreflang("/knowledge/seo-terms"),
       },
     },
     {

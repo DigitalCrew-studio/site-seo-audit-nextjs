@@ -47,6 +47,9 @@ export function Footer() {
             <p className="mt-3 text-[12px] leading-relaxed text-faint">
               История аудитов и настройки интерфейса хранятся локально в браузере.
             </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-faint">
+              Официальный адрес сервиса: seofrendly.ru
+            </p>
           </div>
 
           <div>

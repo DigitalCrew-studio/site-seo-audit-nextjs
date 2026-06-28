@@ -67,7 +67,11 @@ const MIN_USABLE_FINAL_REPORT_CHARS = 500;
 // the model may request up to MAX_FOLLOWUP_TOOL_CALLS additional tools.
 const MAX_FOLLOWUP_TOOL_CALLS = 5;
 const EVIDENCE_RESULT_MAX_BYTES = 2000;
+const LIGHTHOUSE_EVIDENCE_RESULT_MAX_BYTES = 12000;
 const MAX_EVIDENCE_ERROR_CHARS = 200;
+const PREFLIGHT_SCREENSHOT_LIMIT = 30;
+const HOMEPAGE_RESPONSIVE_SCREENSHOT_COUNT = 4;
+const PAGE_SCREENSHOT_PROFILES = ["desktop", "mobile"] as const;
 
 // Throttling for streamed model output. Emit a status/debug event at most
 // once per window so the UI gets visible progress without log spam.
@@ -269,8 +273,8 @@ function buildFinalReportMessage(language: AuditLanguage): ChatCompletionMessage
     role: "user",
     content:
       language === "ru"
-        ? `Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному диагностическому шаблону из системного промпта: все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно заполни матрицу охвата проверок (Проверено / Частично / Не оценено / Требует данных) и используй текстовые шкалы для Lighthouse / Core Web Vitals. Без roadmap, рекомендаций по исправлению, владельцев и сроков. Если данных не хватает, явно укажи ограничение и не выдумывай факты. Не выводи рассуждения, chain-of-thought, <think>, скрытые заметки или markdown code fence. Начни сразу с "${heading}". В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}. Если не успеваешь закончить, не выводи этот маркер.`
-        : `Stop calling tools. Produce the FINAL DIAGNOSTIC SEO audit now using only the evidence already collected. Follow the required diagnostic template from the system prompt: every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure you fill the Check coverage matrix (Checked / Partially checked / Not assessed / Requires data) and use textual gauges for Lighthouse / Core Web Vitals. No roadmap, recommended fixes, owners, or timelines. If evidence is incomplete, state the limitation clearly and do not invent facts. Do not output reasoning, chain-of-thought, <think>, hidden notes, or a markdown code fence. Start directly with "${heading}". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line. If you cannot finish, do not output this marker.`,
+        ? `Больше не вызывай инструменты. Сформируй ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит сейчас, используя только уже собранные доказательства. Следуй обязательному диагностическому шаблону из системного промпта: все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно заполни матрицу охвата проверок (Проверено / Частично / Не оценено / Требует данных), текстовые шкалы для Lighthouse / Core Web Vitals, постраничную визуальную проверку по inspect_responsive_rendering и раздел рекомендаций по улучшению. Без roadmap, владельцев и сроков. Если данных не хватает, явно укажи ограничение и не выдумывай факты. Не выводи рассуждения, chain-of-thought, <think>, скрытые заметки или markdown code fence. Начни сразу с "${heading}". В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}. Если не успеваешь закончить, не выводи этот маркер.`
+        : `Stop calling tools. Produce the FINAL DIAGNOSTIC SEO audit now using only the evidence already collected. Follow the required diagnostic template from the system prompt: every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure you fill the Check coverage matrix (Checked / Partially checked / Not assessed / Requires data), textual gauges for Lighthouse / Core Web Vitals, page-by-page visual check from inspect_responsive_rendering, and the improvement recommendations section. No roadmap, owners, or timelines. If evidence is incomplete, state the limitation clearly and do not invent facts. Do not output reasoning, chain-of-thought, <think>, hidden notes, or a markdown code fence. Start directly with "${heading}". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line. If you cannot finish, do not output this marker.`,
   };
 }
 
@@ -280,8 +284,8 @@ function buildEmergencyFinalReportMessage(language: AuditLanguage): ChatCompleti
     role: "user",
     content:
       language === "ru"
-        ? `Предыдущая попытка итогового отчёта не завершилась корректно. Немедленно верни компактный, но полноценный ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательным секциям шаблона. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно включи матрицу охвата проверок и таблицу основных SEO-рисков. Без roadmap, рекомендаций по исправлению, владельцев и сроков. Не используй инструменты. Не выводи <think>, рассуждения, преамбулу или code fence. Начни с "${heading}". Ограничься самыми важными проверенными находками и явно пометь непроверенное как «Не оценено». В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
-        : `The previous final-report attempt did not complete cleanly. Immediately return a compact but complete DIAGNOSTIC SEO audit using the required template sections. Every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure to include the Check coverage matrix and the Main SEO risks table. No roadmap, recommended fixes, owners, or timelines. Do not call tools. Do not output <think>, reasoning, preamble, or a code fence. Start with "${heading}". Limit the report to the most important verified findings and mark unverified areas as "Not assessed". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+        ? `Предыдущая попытка итогового отчёта не завершилась корректно. Немедленно верни компактный, но полноценный ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательным секциям шаблона. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — на русском языке. Обязательно включи матрицу охвата проверок, постраничную визуальную проверку, таблицу основных SEO-рисков и раздел рекомендаций по улучшению. Без roadmap, владельцев и сроков. Не используй инструменты. Не выводи <think>, рассуждения, преамбулу или code fence. Начни с "${heading}". Ограничься самыми важными проверенными находками и явно пометь непроверенное как «Не оценено». В конце полного отчёта отдельной последней строкой выведи ${FINAL_REPORT_END_MARKER}.`
+        : `The previous final-report attempt did not complete cleanly. Immediately return a compact but complete DIAGNOSTIC SEO audit using the required template sections. Every visible heading, table header, status label, and scorecard category label MUST be in English. Make sure to include the Check coverage matrix, Page-by-page visual check, Main SEO risks table, and Improvement recommendations section. No roadmap, owners, or timelines. Do not call tools. Do not output <think>, reasoning, preamble, or a code fence. Start with "${heading}". Limit the report to the most important verified findings and mark unverified areas as "Not assessed". End the complete report with ${FINAL_REPORT_END_MARKER} on its own final line.`,
   };
 }
 
@@ -306,8 +310,8 @@ function buildFinalContinuationMessages(
     {
       role: "system",
       content: language === "ru"
-        ? `Ты завершаешь уже начатый диагностический SEO-отчёт. Инструменты недоступны. Не повторяй существующий текст. Все видимые заголовки, заголовки таблиц, статусы и подписи — на русском языке. Без roadmap, рекомендаций по исправлению, владельцев, сроков и бэклога. Итоговый полный отчёт должен закончиться строкой ${FINAL_REPORT_END_MARKER}.`
-        : `You are finishing an already-started diagnostic SEO report. Tools are unavailable. Do not repeat existing text. Every visible heading, table header, status, and label must be in English. No roadmap, recommended fixes, owners, timelines, or backlog. The complete final report must end with ${FINAL_REPORT_END_MARKER}.`,
+        ? `Ты завершаешь уже начатый диагностический SEO-отчёт. Инструменты недоступны. Не повторяй существующий текст. Все видимые заголовки, заголовки таблиц, статусы и подписи — на русском языке. Разделы постраничной визуальной проверки и рекомендаций по улучшению разрешены и обязательны, если они ещё не были выведены. Без roadmap, владельцев, сроков и бэклога. Итоговый полный отчёт должен закончиться строкой ${FINAL_REPORT_END_MARKER}.`
+        : `You are finishing an already-started diagnostic SEO report. Tools are unavailable. Do not repeat existing text. Every visible heading, table header, status, and label must be in English. The page-by-page visual check and improvement recommendations sections are allowed and required if they have not been output yet. No roadmap, owners, timelines, or backlog. The complete final report must end with ${FINAL_REPORT_END_MARKER}.`,
     },
     {
       role: "assistant",
@@ -978,10 +982,13 @@ function buildEvidenceSummary(evidence: AuditEvidence): unknown {
         json = undefined;
       }
       if (json) {
-        if (utf8Bytes(json) <= EVIDENCE_RESULT_MAX_BYTES) {
+        const maxResultBytes = entry.name === "run_lighthouse"
+          ? LIGHTHOUSE_EVIDENCE_RESULT_MAX_BYTES
+          : EVIDENCE_RESULT_MAX_BYTES;
+        if (utf8Bytes(json) <= maxResultBytes) {
           summary.result = entry.result;
         } else {
-          const { text, originalBytes } = safeTruncate(json, EVIDENCE_RESULT_MAX_BYTES);
+          const { text, originalBytes } = safeTruncate(json, maxResultBytes);
           summary.result = {
             _truncated: true,
             _originalBytes: originalBytes,
@@ -1004,12 +1011,80 @@ function buildEvidenceSummary(evidence: AuditEvidence): unknown {
 
 type PreflightToolCall = { name: string; args: Record<string, unknown> };
 
+function normalizedUrlKey(raw: string): string | undefined {
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function buildPageScreenshotToolCalls(
+  crawlResult: unknown,
+  targetUrl: string
+): PreflightToolCall[] {
+  if (!crawlResult || typeof crawlResult !== "object" || Array.isArray(crawlResult)) return [];
+  const pages = (crawlResult as { pages?: unknown }).pages;
+  if (!Array.isArray(pages)) return [];
+
+  const targetKey = normalizedUrlKey(targetUrl);
+  const targetOrigin = (() => {
+    try {
+      return new URL(targetUrl).origin;
+    } catch {
+      return undefined;
+    }
+  })();
+  const screenshotBudget = Math.max(
+    0,
+    PREFLIGHT_SCREENSHOT_LIMIT - HOMEPAGE_RESPONSIVE_SCREENSHOT_COUNT
+  );
+  const maxPages = Math.floor(screenshotBudget / PAGE_SCREENSHOT_PROFILES.length);
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  for (const page of pages) {
+    if (!page || typeof page !== "object" || Array.isArray(page)) continue;
+    const record = page as { finalUrl?: unknown; url?: unknown; status?: unknown };
+    const candidate = typeof record.finalUrl === "string" && record.finalUrl.length > 0
+      ? record.finalUrl
+      : typeof record.url === "string" && record.url.length > 0
+        ? record.url
+        : undefined;
+    if (!candidate || STATIC_ASSET_EXT_RE.test(candidate)) continue;
+    const status = typeof record.status === "number" ? record.status : undefined;
+    if (status !== undefined && (status < 200 || status >= 400)) continue;
+    const key = normalizedUrlKey(candidate);
+    if (!key || key === targetKey || seen.has(key)) continue;
+    try {
+      if (targetOrigin && new URL(candidate).origin !== targetOrigin) continue;
+    } catch {
+      continue;
+    }
+    seen.add(key);
+    urls.push(candidate);
+    if (urls.length >= maxPages) break;
+  }
+
+  return urls.map((url) => ({
+    name: "inspect_responsive_rendering",
+    args: {
+      url,
+      profiles: [...PAGE_SCREENSHOT_PROFILES],
+      includeScreenshots: true,
+    },
+  }));
+}
+
 function buildPreflightToolCalls(url: string): PreflightToolCall[] {
   return [
     { name: "inspect_http", args: { url } },
     { name: "inspect_page_seo", args: { url } },
     { name: "parse_sitemap", args: { url, maxUrls: 100, checkSample: false } },
-    { name: "crawl_site_sample", args: { url, maxPages: 10 } },
+    { name: "crawl_site_sample", args: { url, maxPages: 14 } },
     { name: "extract_structured_data", args: { url, checkImages: false } },
     { name: "inspect_social_preview", args: { url, checkImages: true } },
     { name: "inspect_responsive_rendering", args: { url, profiles: ["desktop", "laptop", "tablet", "mobile"], includeScreenshots: true } },
@@ -1034,8 +1109,8 @@ function buildPlanningUserMessage(
     role: "user",
     content:
       language === "ru"
-        ? `Целевой URL: ${url}\n\nСобраны предварительные доказательства (preflight):\n\n${evidenceJson}\n\nИспользуй инструменты свободно, если нужны дополнительные доказательства. Когда данных достаточно, верни диагностический SEO-отчёт по шаблону из системного промпта: без roadmap, рекомендаций по исправлению, владельцев, сроков и бэклога. Все видимые заголовки и заголовки таблиц — на русском. Начни с "${heading}" и заверши ${FINAL_REPORT_END_MARKER}.`
-        : `Target URL: ${url}\n\nPreflight evidence has been collected:\n\n${evidenceJson}\n\nUse tools freely if more evidence is needed. Once evidence is sufficient, return the diagnostic SEO report using the system template: no roadmap, recommended fixes, owners, timelines, or backlog. Every visible heading and table header must be in English. Start with "${heading}" and end with ${FINAL_REPORT_END_MARKER}.`,
+        ? `Целевой URL: ${url}\n\nСобраны предварительные доказательства (preflight):\n\n${evidenceJson}\n\nИспользуй инструменты свободно, если нужны дополнительные доказательства. Когда данных достаточно, верни диагностический SEO-отчёт по шаблону из системного промпта с постраничной визуальной проверкой и разделом рекомендаций по улучшению: без roadmap, владельцев, сроков и бэклога. Все видимые заголовки и заголовки таблиц — на русском. Начни с "${heading}" и заверши ${FINAL_REPORT_END_MARKER}.`
+        : `Target URL: ${url}\n\nPreflight evidence has been collected:\n\n${evidenceJson}\n\nUse tools freely if more evidence is needed. Once evidence is sufficient, return the diagnostic SEO report using the system template with the page-by-page visual check and improvement recommendations section: no roadmap, owners, timelines, or backlog. Every visible heading and table header must be in English. Start with "${heading}" and end with ${FINAL_REPORT_END_MARKER}.`,
   };
 }
 
@@ -1050,8 +1125,8 @@ function buildFinalEvidenceUserMessage(
     role: "user",
     content:
       language === "ru"
-        ? `Целевой URL: ${url}\n\nКомпактная сводка собранных доказательств:\n\n${evidenceJson}\n\nСформируй итоговую SEO-диагностику по шаблону из системного промпта, используя только эти доказательства. Не вызывай инструменты. Без roadmap, рекомендаций по исправлению, владельцев, сроков и бэклога. Не выводи <think>, рассуждения, скрытые заметки или code fence. Начни сразу с "${heading}". Если данных не хватает, явно укажи ограничение и не выдумывай факты.`
-        : `Target URL: ${url}\n\nCompact summary of collected evidence:\n\n${evidenceJson}\n\nProduce the final SEO diagnostic report using the system template, based only on this evidence. Do not call tools. No roadmap, recommended fixes, owners, timelines, or backlog. Do not output <think>, reasoning, hidden notes, or a code fence. Start directly with "${heading}". If data is insufficient, state the limitation clearly and do not invent facts.`,
+        ? `Целевой URL: ${url}\n\nКомпактная сводка собранных доказательств:\n\n${evidenceJson}\n\nСформируй итоговую SEO-диагностику по шаблону из системного промпта, используя только эти доказательства. Не вызывай инструменты. Включи постраничную визуальную проверку и раздел рекомендаций по улучшению на основе доказательств. Без roadmap, владельцев, сроков и бэклога. Не выводи <think>, рассуждения, скрытые заметки или code fence. Начни сразу с "${heading}". Если данных не хватает, явно укажи ограничение и не выдумывай факты.`
+        : `Target URL: ${url}\n\nCompact summary of collected evidence:\n\n${evidenceJson}\n\nProduce the final SEO diagnostic report using the system template, based only on this evidence. Do not call tools. Include the page-by-page visual check and evidence-based improvement recommendations section. No roadmap, owners, timelines, or backlog. Do not output <think>, reasoning, hidden notes, or a code fence. Start directly with "${heading}". If data is insufficient, state the limitation clearly and do not invent facts.`,
   };
 }
 
@@ -1072,8 +1147,8 @@ function buildAgentUserMessage(
     role: "user",
     content:
       language === "ru"
-        ? `Целевой URL: ${url}\n\nНиже приведена компактная сводка автоматически собранных предварительных доказательств (preflight):\n\n${evidenceJson}\n\nТвоя задача:\n1. Используй приведённую выше сводку как отправную точку.\n2. Свободно вызывай любые из доступных TOOLS, чтобы собрать недостающие доказательства. Можно делать несколько вызовов подряд в одном шаге.\n3. Прежде чем переходить к итоговому ответу, убедись, что КАЖДАЯ URL-only область/инструмент из доступных упомянуты в матрице охвата проверок с явным статусом «Проверено», «Частично», «Не оценено» или «Требует данных». Не добавляй Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.\n4. Когда доказательств достаточно, верни ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательному шаблону из системного промпта обычным текстом (БЕЗ вызова TOOLS). Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). Без roadmap, рекомендаций по исправлению, владельцев и сроков. Начни с "${heading}" и заверши ${FINAL_REPORT_END_MARKER} на отдельной последней строке.`
-        : `Target URL: ${url}\n\nBelow is a compact JSON summary of the automatically collected preflight evidence:\n\n${evidenceJson}\n\nYour task:\n1. Use the evidence summary above as the starting point.\n2. You may freely call any of the available TOOLS to gather missing evidence. You may make multiple tool calls in a single step.\n3. Before producing the final answer, make sure EVERY available URL-only audit area / tool group is mentioned in the Check coverage matrix with an explicit status of "Checked", "Partially checked", "Not assessed", or "Requires data". Do not add Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.\n4. Once the evidence is sufficient, return the FINAL DIAGNOSTIC SEO audit following the required template from the system prompt as plain text (no TOOL calls). Every visible heading, table header, status label, and scorecard category label MUST be in English (only established technical terms allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). No roadmap, recommended fixes, owners, or timelines. Start with "${heading}" and end with ${FINAL_REPORT_END_MARKER} on its own final line.`,
+        ? `Целевой URL: ${url}\n\nНиже приведена компактная сводка автоматически собранных предварительных доказательств (preflight):\n\n${evidenceJson}\n\nТвоя задача:\n1. Используй приведённую выше сводку как отправную точку.\n2. Свободно вызывай любые из доступных TOOLS, чтобы собрать недостающие доказательства. Можно делать несколько вызовов подряд в одном шаге.\n3. Прежде чем переходить к итоговому ответу, убедись, что КАЖДАЯ URL-only область/инструмент из доступных упомянуты в матрице охвата проверок с явным статусом «Проверено», «Частично», «Не оценено» или «Требует данных». Не добавляй Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.\n4. Когда доказательств достаточно, верни ИТОГОВЫЙ ДИАГНОСТИЧЕСКИЙ SEO-аудит по обязательному шаблону из системного промпта обычным текстом (БЕЗ вызова TOOLS), включая постраничную визуальную проверку и раздел рекомендаций по улучшению на основе доказательств. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). Без roadmap, владельцев и сроков. Начни с "${heading}" и заверши ${FINAL_REPORT_END_MARKER} на отдельной последней строке.`
+        : `Target URL: ${url}\n\nBelow is a compact JSON summary of the automatically collected preflight evidence:\n\n${evidenceJson}\n\nYour task:\n1. Use the evidence summary above as the starting point.\n2. You may freely call any of the available TOOLS to gather missing evidence. You may make multiple tool calls in a single step.\n3. Before producing the final answer, make sure EVERY available URL-only audit area / tool group is mentioned in the Check coverage matrix with an explicit status of "Checked", "Partially checked", "Not assessed", or "Requires data". Do not add Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.\n4. Once the evidence is sufficient, return the FINAL DIAGNOSTIC SEO audit following the required template from the system prompt as plain text (no TOOL calls), including the page-by-page visual check and evidence-based improvement recommendations section. Every visible heading, table header, status label, and scorecard category label MUST be in English (only established technical terms allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, JSON-LD, Open Graph). No roadmap, owners, or timelines. Start with "${heading}" and end with ${FINAL_REPORT_END_MARKER} on its own final line.`,
   };
 }
 
@@ -2000,7 +2075,8 @@ export async function runAudit({
       message: "Preflight plan",
       data: { count: preflightCalls.length, tools: preflightCalls.map((c) => c.name) },
     });
-    for (const call of preflightCalls) {
+    for (let preflightIndex = 0; preflightIndex < preflightCalls.length; preflightIndex += 1) {
+      const call = preflightCalls[preflightIndex];
       if (isAborted(signal)) {
         emit("error", { message: "Audit aborted by client" });
         return;
@@ -2022,6 +2098,25 @@ export async function runAudit({
       }
       const entry = await runPreflightTool(call, browser, emit, toolErrors);
       appendEvidence(evidence.preflight, entry);
+      if (call.name === "crawl_site_sample" && entry.ok) {
+        const screenshotCalls = buildPageScreenshotToolCalls(entry.result, url);
+        if (screenshotCalls.length > 0) {
+          preflightCalls.splice(preflightIndex + 1, 0, ...screenshotCalls);
+          emit("status", {
+            message: `Added page-by-page screenshot checks for ${screenshotCalls.length} crawled page(s) (max ${PREFLIGHT_SCREENSHOT_LIMIT} screenshots total).`,
+            phase: "preflight",
+          });
+          emit("debug", {
+            message: "Page screenshot preflight plan",
+            data: {
+              count: screenshotCalls.length,
+              profiles: [...PAGE_SCREENSHOT_PROFILES],
+              urls: screenshotCalls.map((c) => c.args.url),
+              screenshotLimit: PREFLIGHT_SCREENSHOT_LIMIT,
+            },
+          });
+        }
+      }
       emit("debug", {
         message: "Preflight tool done",
         data: { name: entry.name, ok: entry.ok, durationMs: entry.durationMs, bytes: entry.bytes },

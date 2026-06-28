@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { BookOpen, Camera, FileText, Route, Wrench } from "lucide-react";
 import { AuditForm } from "@/components/AuditForm";
 import { AuditHistorySidebar } from "@/components/AuditHistorySidebar";
@@ -155,20 +156,20 @@ export default function AuditPage() {
             </div>
 
             <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center">
-              <a
+              <Link
                 href="/knowledge"
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-line bg-surface px-4 text-[13px] font-semibold text-ink transition hover:border-line-strong hover:bg-paper"
               >
                 <BookOpen className="h-4 w-4 text-accent" />
                 Разобраться в терминах SEO
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/services"
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-line bg-surface px-4 text-[13px] font-semibold text-ink transition hover:border-line-strong hover:bg-paper"
               >
                 <Wrench className="h-4 w-4 text-accent" />
                 Заказать внедрение правок
-              </a>
+              </Link>
             </div>
           </section>
 

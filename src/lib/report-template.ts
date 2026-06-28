@@ -74,6 +74,12 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 | Mobile | 390×844 | ... | ... | ... | ... | ... | ... |
 (Одна строка на каждый из профилей, проверенных inspect_responsive_rendering; если профилей было меньше — пометить отсутствующие как «Не оценено». Small text — число элементов с font-size < 12px; Tap issues — число интерактивных элементов < 48×48 CSS px. Screenshot — есть ли JPEG, сохранённый в галерее отчёта. Overflow и H1 above fold показывают, как страница ведёт себя в данном viewport.)
 
+## Постраничная визуальная проверка
+| URL | Проверенные профили | Скриншоты | Overflow | H1 above fold | Small text | Tap issues | Визуальные наблюдения |
+|---|---|---:|---|---|---:|---:|---|
+| ... | Desktop / Mobile / Tablet / Laptop | <count> | да/нет, <профили> | да/нет, <профили> | <count> | <count> | <краткое наблюдение по скриншотам и rendering evidence> |
+(Заполни по всем page-by-page вызовам inspect_responsive_rendering из preflight/follow-up. Укажи реальное количество скриншотов и профили для каждой страницы. Если проверена только главная — так и укажи ограничение.)
+
 ## Анализ по категориям
 <Свободный диагностический текст по каждой ключевой области, объединяющий факты. Только наблюдения, без рекомендаций и плана действий.>
 
@@ -81,7 +87,13 @@ const RU_REPORT_TEMPLATE = `# SEO-диагностика: <site>
 | Область | URL | Доказательство | Текущее состояние | Норма или ориентир | Значение для SEO | Серьёзность | Достоверность |
 |---|---|---|---|---|---|---|---|
 | ... | ... | ... | ... | ... | ... | Критично / Высокая / Средняя / Низкая / Инфо | Высокая / Средняя / Низкая |
-(Одна строка на каждый значимый риск. Без рекомендаций по исправлению, владельцев, сроков или шагов внедрения.)
+(Одна строка на каждый значимый риск. Без владельцев, сроков или шагов внедрения.)
+
+## Рекомендации по улучшению
+| Приоритет | Область | Рекомендация | Основание | Ожидаемый эффект | Источник |
+|---|---|---|---|---|---|
+| Высокий / Средний / Низкий | Lighthouse / техническое SEO / контент / аналитика / безопасность | <конкретная рекомендация без владельца и срока> | <факт из инструмента или наблюдение> | <какая метрика или SEO-риск может улучшиться> | <инструмент: run_lighthouse / inspect_page_seo / ...> |
+(Включи рекомендации Lighthouse из opportunities/diagnostics/failedAudits, если они есть. Разрешены практические рекомендации, но без roadmap, owners, timeline, sprint и бэклога.)
 
 ## Не оценено / ограничения
 <Что не удалось проверить внутри URL-only аудита: например, инструмент не запустился, доступ закрыт, данных на публичной странице нет, проверка требует авторизованного API. Не упоминай Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports как «не предоставлено», потому что текущий интерфейс принимает только URL.>
@@ -172,6 +184,12 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 | Mobile | 390×844 | ... | ... | ... | ... | ... | ... |
 (One row per profile checked by inspect_responsive_rendering; if some profiles were not requested, mark them "Not assessed". Small text = number of elements with font-size < 12px; Tap issues = number of interactive controls smaller than 48×48 CSS px. Screenshot = whether a JPEG was captured and stored in the report gallery. Overflow and H1 above fold show how the page behaves in that specific viewport.)
 
+## Page-by-page visual check
+| URL | Checked profiles | Screenshots | Overflow | H1 above fold | Small text | Tap issues | Visual observations |
+|---|---|---:|---|---|---:|---:|---|
+| ... | Desktop / Mobile / Tablet / Laptop | <count> | yes/no, <profiles> | yes/no, <profiles> | <count> | <count> | <short observation based on screenshots and rendering evidence> |
+(Fill this from all page-by-page inspect_responsive_rendering calls in preflight/follow-up. State the real screenshot count and profiles for each page. If only the homepage was checked, state that limitation.)
+
 ## Category analysis
 <Free-form diagnostic narrative per key area, summarising facts. Observations only, no recommendations or action plan.>
 
@@ -179,7 +197,13 @@ const EN_REPORT_TEMPLATE = `# SEO diagnostic: <site>
 | Area | URL | Evidence | Current state | Normal benchmark | SEO implication | Severity | Confidence |
 |---|---|---|---|---|---|---|---|
 | ... | ... | ... | ... | ... | ... | Critical / High / Medium / Low / Info | High / Medium / Low |
-(One row per significant risk. No fix instructions, owners, timelines, or implementation steps.)
+(One row per significant risk. No owners, timelines, or implementation steps.)
+
+## Improvement recommendations
+| Priority | Area | Recommendation | Basis | Expected effect | Source |
+|---|---|---|---|---|---|
+| High / Medium / Low | Lighthouse / technical SEO / content / analytics / security | <specific recommendation without owner or deadline> | <tool fact or observation> | <metric or SEO risk that may improve> | <tool: run_lighthouse / inspect_page_seo / ...> |
+(Include Lighthouse recommendations from opportunities/diagnostics/failedAudits when available. Practical recommendations are allowed, but do not include roadmap, owners, timeline, sprint, or backlog.)
 
 ## Not assessed / limitations
 <What could not be tested within the URL-only audit: e.g. a tool failed, public access was blocked, public page data was absent, or an authenticated API would be required. Do not mention Search Console, uploaded reports, Ahrefs/Semrush/backlink exports as “not provided”, because the current interface accepts only a URL.>
@@ -242,16 +266,18 @@ export function reportInstructions(language: AuditLanguage): string {
   if (language === "ru") {
     return `## Формат отчёта (СТРОГО)
 
-Этот шаблон ДИАГНОСТИЧЕСКОГО отчёта имеет приоритет над любым другим форматом отчётности, упомянутым в подключённом SEO-навыке (включая секции «Recommended roadmap», «Top 5 priorities», «Validation checklist», поля «Owner», «Recommended fix» как инструкции, временные рамки, спринты, бэклоги). Отчёт ДОЛЖЕН быть человекочитаемой диагностикой, а не задачником.
+Этот шаблон ДИАГНОСТИЧЕСКОГО отчёта имеет приоритет над любым другим форматом отчётности, упомянутым в подключённом SEO-навыке (включая секции «Recommended roadmap», «Top 5 priorities», «Validation checklist», поля «Owner», временные рамки, спринты, бэклоги). Отчёт ДОЛЖЕН быть человекочитаемой диагностикой с отдельным разделом рекомендаций, а не задачником.
 
 Ты ДОЛЖЕН вернуть отчёт, который СТРОГО следует приведённому ниже шаблону, секция за секцией, в указанном порядке. Все видимые заголовки, заголовки таблиц, метки статусов и категории скоркарда — строго на русском языке (допускаются только устоявшиеся технические термины: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph и т.п.). Заполни каждую секцию реальным содержимым на основе собранных через инструменты доказательств. Не пропускай секции. Если для секции нет данных, явно укажи «Не оценено» или «Требует данных» и объясни почему — никогда не выдумывай факты.
 
 Правила заполнения:
 - Скоркард оценивается по 100-балльной URL-only модели. Оценивай только области, которые можно проверить по публичному URL и доступным инструментам. Не добавляй штрафы за Search Console, загруженные отчёты, Ahrefs/Semrush/backlink exports или другие данные, которые текущий интерфейс не принимает. Если область из URL-only набора не проверена — оставь «Проверено» = 0 и пометь «Статус» как «Не оценено», не угадывай. Баллы диагностические, не прогноз позиций.
-- Таблица «Основные SEO-риски» — одна строка на риск. Колонки строго: Область, URL, Доказательство, Текущее состояние, Норма или ориентир, Значение для SEO, Серьёзность, Достоверность. ЗАПРЕЩЕНО добавлять колонки «Recommended fix», «Owner», «Timeline», «Sprint», «Priority P0–P3» в виде инструкций, владельцев или сроков — это диагностика, а не бэклог.
+- Таблица «Основные SEO-риски» — одна строка на риск. Колонки строго: Область, URL, Доказательство, Текущее состояние, Норма или ориентир, Значение для SEO, Серьёзность, Достоверность. Рекомендации выноси только в отдельный раздел «Рекомендации по улучшению». ЗАПРЕЩЕНО добавлять колонки «Owner», «Timeline», «Sprint», «Priority P0–P3» в виде владельцев или сроков — это диагностика, а не бэклог.
 - В разделе «Матрица охвата проверок» перечисли ВСЕ доступные URL-only области/инструменты аудита (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering по desktop/laptop/tablet/mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). Для каждой укажи: Проверено / Частично / Не оценено / Требует данных. Не добавляй строки про Search Console, загруженные отчёты, Ahrefs/Semrush или бэклинк-экспорты.
 - В разделе «Диагностика Lighthouse / производительности» используй ТЕКСТОВЫЕ ШКАЛЫ, например «🟢 ██████████», «🟡 ██████░░░░», «🔴 ███░░░░░░░», для каждой метрики: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. Если метрика недоступна — «Не оценено» с причиной.
-- ЗАПРЕЩЕНО: roadmap, рекомендованные исправления с шагами внедрения, владельцы, сроки, спринты, бэклоги, чек-листы валидации как задачи. Отчёт диагностический, а не плановый.
+- Раздел «Постраничная визуальная проверка» обязателен: используй все результаты inspect_responsive_rendering, включая дополнительные page-by-page скриншоты crawled URL. Не своди визуальную проверку только к 4 скриншотам главной, если preflight собрал больше страниц.
+- Раздел «Рекомендации по улучшению» обязателен: включи практические рекомендации на основе собранных доказательств, особенно Lighthouse opportunities/diagnostics/failedAudits. Не выдумывай рекомендации без фактов.
+- ЗАПРЕЩЕНО: roadmap, владельцы, сроки, спринты, бэклоги, чек-листы валидации как задачи. Отчёт диагностический, а не плановый.
 - Не выводи <think>, chain-of-thought, скрытые заметки или code fence. Только сам отчёт.
 
 ### Ориентиры и нормативы (используй для сравнения с фактами):
@@ -268,16 +294,18 @@ ${RU_REPORT_TEMPLATE}
 
   return `## Report format (STRICT)
 
-This DIAGNOSTIC report template takes priority over any other reporting format inside the attached SEO skill (including the "Required final report structure" and "Required finding format" sections of the skill, and any "Recommended roadmap", "Top 5 priorities", "Validation checklist", "Owner", "Recommended fix" used as fix instructions, timelines, sprints, or task backlogs). The report MUST be a human-readable SEO diagnostic, not a task backlog.
+This DIAGNOSTIC report template takes priority over any other reporting format inside the attached SEO skill (including the "Required final report structure" and "Required finding format" sections of the skill, and any "Recommended roadmap", "Top 5 priorities", "Validation checklist", "Owner", timelines, sprints, or task backlogs). The report MUST be a human-readable SEO diagnostic with a dedicated recommendations section, not a task backlog.
 
 You MUST return a report that STRICTLY follows the template below, section by section, in the exact order shown. Every visible heading, table header, status label, and Scorecard category label MUST be strictly in English (only established technical terms are allowed: canonical, hreflang, x-default, noindex, robots.txt, sitemap.xml, LCP, CLS, TBT, FCP, TTI, Lighthouse, Performance, Accessibility, Best Practices, JSON-LD, Open Graph, and similar). Fill every section with real content based on evidence collected via the tools. Do not skip sections. If you have no data for a section, explicitly mark it "Not assessed" or "Requires data" and explain why — never invent facts.
 
 Filling rules:
 - Score the Scorecard using the 100-point URL-only model. Assess only areas that can be checked from the public URL and available tools. Do not penalize for Search Console, uploaded reports, Ahrefs/Semrush/backlink exports, or other inputs that the current interface does not accept. If a URL-only area was not assessed, leave "Verified" = 0 and set "Status" to "Not assessed" — never guess. Scores are diagnostic, not predictive.
-- The "Main SEO risks" table is one row per risk. Columns are strictly: Area, URL, Evidence, Current state, Normal benchmark, SEO implication, Severity, Confidence. DO NOT add "Recommended fix", "Owner", "Timeline", "Sprint", or "Priority P0–P3" columns used as fix instructions, owners, or schedules — this is a diagnostic, not a backlog.
+- The "Main SEO risks" table is one row per risk. Columns are strictly: Area, URL, Evidence, Current state, Normal benchmark, SEO implication, Severity, Confidence. Put recommendations only in the dedicated "Improvement recommendations" section. DO NOT add "Owner", "Timeline", "Sprint", or "Priority P0–P3" columns used as owners or schedules — this is a diagnostic, not a backlog.
 - In the "Check coverage matrix" section, list EVERY available URL-only audit area / tool group (HTTP, page SEO, sitemap, crawl, structured data, social preview, hreflang, resource inventory, Lighthouse, responsive rendering across desktop / laptop / tablet / mobile, analytics, link health, llms.txt, entity trust, DNS/security, batch URL checks). For each, mark: Checked / Partially checked / Not assessed / Requires data. Do not add rows for Search Console, uploaded reports, Ahrefs/Semrush, or backlink exports.
 - In the "Lighthouse / performance diagnostics" section, use TEXTUAL GAUGES such as "🟢 ██████████", "🟡 ██████░░░░", "🔴 ███░░░░░░░" for each metric: LCP, CLS, TBT, FCP, TTI, Performance, Accessibility, Best Practices, SEO. If a metric is unavailable, mark "Not assessed" and state the reason.
-- DO NOT include: roadmap, recommended fixes with implementation steps, owners, timelines, sprints, backlogs, or validation checklists framed as tasks. The report is diagnostic, not a plan.
+- The "Page-by-page visual check" section is required: use all inspect_responsive_rendering results, including additional page-by-page screenshots for crawled URLs. Do not reduce visual checking to only the 4 homepage screenshots when preflight collected more pages.
+- The "Improvement recommendations" section is required: include practical recommendations based on collected evidence, especially Lighthouse opportunities/diagnostics/failedAudits. Do not invent recommendations without evidence.
+- DO NOT include: roadmap, owners, timelines, sprints, backlogs, or validation checklists framed as tasks. The report is diagnostic, not a plan.
 - Do not output <think>, chain-of-thought, hidden notes, or code fences. Only the report.
 
 ### Benchmark / reference values (use them to compare facts):

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Breadcrumbs, PageHeader } from "@/components/ui";
 import { SITE_URL, BRAND_EMAIL, withHreflang } from "@/lib/site";
 import {
@@ -141,9 +142,9 @@ export default function PrivacyPage() {
               <p className="mt-2">
                 Сервис не использует cookie и не устанавливает идентификаторы
                 сессий. На страницах может быть загружен счётчик{" "}
-                <a className="text-ink underline" href="/knowledge#yandex-metrica">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#yandex-metrica">
                   Яндекс.Метрики
-                </a>
+                </Link>
                 (если в окружении указан идентификатор). Этот счётчик
                 обрабатывает обезличенные события просмотра страниц и кликов и
                 использует cookie только на стороне Яндекса. Отключить загрузку
@@ -170,13 +171,13 @@ export default function PrivacyPage() {
               </h2>
               <p className="mt-2">
                 Соединение с сайтом защищено{" "}
-                <a className="text-ink underline" href="/knowledge#http-https">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#http-https">
                   HTTPS
-                </a>{" "}
+                </Link>{" "}
                 и заголовком{" "}
-                <a className="text-ink underline" href="/knowledge#hsts">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#hsts">
                   HSTS
-                </a>{" "}
+                </Link>{" "}
                 сроком на один год. Передача между браузером и {SITE_NAME}
                 также идёт по HTTPS. Пользовательские секреты не запрашиваются
                 в интерфейсе.

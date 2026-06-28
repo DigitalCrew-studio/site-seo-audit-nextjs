@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Breadcrumbs, PageHeader } from "@/components/ui";
 import { SITE_URL, withHreflang } from "@/lib/site";
 import {
@@ -104,9 +105,9 @@ export default function AboutPage() {
             </p>
             <p>
               Сервис не требует регистрации, доступа к{" "}
-              <a className="text-ink underline" href="/knowledge#gsc">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#gsc">
                 Search Console
-              </a>{" "}
+              </Link>{" "}
               или
               выгрузок. Достаточно открытого URL.
             </p>
@@ -138,32 +139,32 @@ export default function AboutPage() {
             <p className="mt-3 text-[14px] leading-relaxed text-muted">
               12 направлений диагностики и более 60 конкретных проверок: HTTP-коды
               и редиректы,{" "}
-              <a className="text-ink underline" href="/knowledge#sitemap-xml">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#sitemap-xml">
                 sitemap.xml
-              </a>{" "}
+              </Link>{" "}
               и{" "}
-              <a className="text-ink underline" href="/knowledge#robots-txt">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#robots-txt">
                 robots.txt
-              </a>{", "}
-              <a className="text-ink underline" href="/knowledge#canonical">
+              </Link>{", "}
+              <Link className="text-ink underline" href="/knowledge/seo-terms#canonical">
                 canonical
-              </a>{", "}
+              </Link>{", "}
               мета-теги, иерархия заголовков,{" "}
-              <a className="text-ink underline" href="/knowledge#structured-data-term">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#structured-data-term">
                 структурированные данные
-              </a>{", "}
+              </Link>{", "}
               скорость и{" "}
-              <a className="text-ink underline" href="/knowledge#core-web-vitals">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#core-web-vitals">
                 Core Web Vitals
-              </a>{", "}
+              </Link>{", "}
               адаптивность, HTTPS и заголовки безопасности, изображения и{" "}
-              <a className="text-ink underline" href="/knowledge#open-graph">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#open-graph">
                 Open Graph
-              </a>{", "}
+              </Link>{", "}
               аналитика,{" "}
-              <a className="text-ink underline" href="/knowledge#hreflang">
+              <Link className="text-ink underline" href="/knowledge/seo-terms#hreflang">
                 hreflang
-              </a>.
+              </Link>.
               {" "}Полный список — на главной и в
               файле <a className="text-ink underline" href="/llms.txt">llms.txt</a>.
             </p>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowRight,
   Camera,
@@ -19,7 +20,7 @@ import {
   type Capability,
 } from "@/lib/capabilities";
 import { CapabilityBentoCard } from "@/components/CapabilityBentoCard";
-import { SITE_URL, BRAND_EMAIL, BRAND_SOCIAL_URLS } from "@/lib/site";
+import { SITE_URL, BRAND_EMAIL, BRAND_SOCIAL_URLS, withHreflang } from "@/lib/site";
 
 const SITE_NAME = "Seofriendly";
 const SITE_DESCRIPTION =
@@ -29,9 +30,7 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   alternates: {
     canonical: `${SITE_URL}/`,
-    languages: {
-      "ru-RU": `${SITE_URL}/`,
-    },
+    languages: withHreflang("/"),
   },
   openGraph: {
     title: `${SITE_NAME} — бесплатный SEO-аудит сайта нейросетью`,
@@ -261,14 +260,13 @@ export default function HomePage() {
           <section className="grid min-w-0 items-center gap-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-10">
             <div className="min-w-0 max-w-3xl">
               <h1 className="text-[2.35rem] font-semibold leading-[1.05] tracking-tight text-ink sm:text-[3rem]">
-                Бесплатный SEO - аудит сайта
-                <span className="block text-muted">
-                  нейросетью по одному URL, без выгрузок и&nbsp;регистрации.
-                </span>
+                Бесплатный SEO-аудит сайта
               </h1>
               <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted">
-                Браузер собирает технические факты сайта, а нейросеть превращает
-                их в понятный отчёт с приоритетами и доказательствами.
+                Проверьте сайт по одному URL, без выгрузок и регистрации:
+                индексация, мета-теги, sitemap.xml, robots.txt, canonical,
+                редиректы, скорость и адаптивность. Нейросеть превращает факты
+                проверки в понятный отчёт с приоритетами.
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -356,12 +354,12 @@ export default function HomePage() {
               <p className="mt-4 text-[13px] leading-relaxed text-muted">
                 Расшифровки терминов вроде sitemap.xml, canonical, Core Web
                 Vitals и HSTS собраны в{" "}
-                <a
+                <Link
                   href="/knowledge"
                   className="font-medium text-ink underline underline-offset-2 hover:text-accent"
                 >
                   базе знаний SEO
-                </a>.
+                </Link>.
               </p>
               <div
                 aria-hidden="true"

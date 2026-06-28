@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ArrowRight, CheckCircle2, Mail, SearchCheck, Send } from "lucide-react";
 import { Breadcrumbs, LinkButton, PageHeader } from "@/components/ui";
 import {
@@ -12,7 +13,7 @@ import { pageBreadcrumb, webPageSchema } from "@/lib/structuredData";
 const SITE_NAME = "Seofriendly";
 const PAGE_TITLE = "Услуги SEO — настройка SEO на вашем сайте";
 const PAGE_DESCRIPTION =
-  "Настройка SEO на вашем сайте: техническая оптимизация, sitemap.xml, robots.txt, canonical, мета-теги, структурированные данные, скорость и аналитика.";
+  "SEO-услуги и настройка SEO на сайте: техническая оптимизация, sitemap.xml, robots.txt, canonical, мета-теги, структурированные данные, скорость и аналитика.";
 
 const SERVICE_POINTS = [
   "Исправление технических проблем после аудита: индексация, canonical, robots.txt, sitemap.xml, редиректы.",
@@ -21,6 +22,31 @@ const SERVICE_POINTS = [
   "Проверка Core Web Vitals, Lighthouse-диагностики, изображений, веса страницы и мобильной пригодности.",
   "Настройка базовой аналитики: GA4, GTM, Яндекс.Метрика, цели и ключевые события.",
   "Финальная проверка результата: повторный аудит, список изменений и рекомендации на следующий этап.",
+] as const;
+
+const SERVICE_SCOPES = [
+  {
+    title: "Техническая SEO-оптимизация",
+    text: "Исправляем препятствия для обхода и индексации: статусы страниц, редиректы, robots.txt, sitemap.xml, canonical, noindex и внутренние ссылки.",
+  },
+  {
+    title: "Мета-теги и структура страниц",
+    text: "Настраиваем title, description, H1-H3, Open Graph и Twitter Card так, чтобы страница была понятна пользователю и поисковой системе.",
+  },
+  {
+    title: "Микроразметка и доверие",
+    text: "Добавляем JSON-LD для Organization, WebSite, BreadcrumbList, Article, Service, Product или LocalBusiness, если разметка соответствует видимому контенту.",
+  },
+  {
+    title: "Скорость, мобильная версия и аналитика",
+    text: "Проверяем Core Web Vitals, Lighthouse, изображения, мобильный layout, Яндекс.Метрику, GA4, цели и ключевые события.",
+  },
+] as const;
+
+const RESULT_ITEMS = [
+  "Список внедрённых SEO-правок с объяснением, зачем они нужны.",
+  "Повторная проверка ключевых страниц после изменений.",
+  "Рекомендации, что делать дальше: контент, индексация, скорость или аналитика.",
 ] as const;
 
 const PROCESS = [
@@ -58,6 +84,14 @@ const FAQ = [
   {
     q: "Что входит в результат работы?",
     a: "Список выполненных изменений, повторная проверка ключевых страниц и рекомендации на следующий этап: индексация, мета-данные, structured data, скорость или аналитика.",
+  },
+  {
+    q: "Какие SEO-услуги можно заказать после аудита?",
+    a: "Можно заказать внедрение технических SEO-правок: sitemap.xml, robots.txt, canonical, редиректы, мета-теги, структура заголовков, JSON-LD, Open Graph, скорость, мобильная версия и базовая аналитика.",
+  },
+  {
+    q: "Можно ли настроить SEO только для Яндекса?",
+    a: "Базовая техническая настройка обычно полезна и для Яндекса, и для Google: индексируемость, видимый текст, title, description, canonical, sitemap.xml и robots.txt. Для Яндекса дополнительно проверяем сниппеты, Яндекс.Вебмастер и Яндекс.Метрику.",
   },
 ] as const;
 
@@ -171,7 +205,7 @@ export default function ServicesPage() {
               </span>
               <p className="eyebrow mt-5 text-faint">основная услуга</p>
               <h2 className="mt-3 max-w-2xl text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-                Настройка SEO на вашем сайте
+                SEO-услуги и настройка SEO на вашем сайте
               </h2>
               <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted">
                 Берём результаты аудита и превращаем их в реальные изменения:
@@ -240,17 +274,17 @@ export default function ServicesPage() {
                   бесплатную проверку
                 </a>
                 . Термины вроде{" "}
-                <a className="text-ink underline" href="/knowledge#canonical">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#canonical">
                   canonical
-                </a>
+                </Link>
                 ,{" "}
-                <a className="text-ink underline" href="/knowledge#robots-txt">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#robots-txt">
                   robots.txt
-                </a>{" "}
+                </Link>{" "}
                 и{" "}
-                <a className="text-ink underline" href="/knowledge#core-web-vitals">
+                <Link className="text-ink underline" href="/knowledge/seo-terms#core-web-vitals">
                   Core Web Vitals
-                </a>{" "}
+                </Link>{" "}
                 разобраны в базе знаний.
               </p>
             </div>
@@ -262,6 +296,66 @@ export default function ServicesPage() {
                 >
                   <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-positive" />
                   <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mt-12" aria-labelledby="services-scope-heading">
+            <div className="max-w-3xl">
+              <p className="eyebrow text-faint">направления работ</p>
+              <h2
+                id="services-scope-heading"
+                className="mt-2 text-2xl font-semibold tracking-tight text-ink"
+              >
+                Какие SEO-услуги можно заказать
+              </h2>
+              <p className="mt-3 text-[14px] leading-relaxed text-muted">
+                Обычно начинаем с бесплатного аудита, затем выбираем правки с
+                максимальным эффектом для индексации, сниппетов и технического
+                состояния сайта. Если нужен только список задач для вашей
+                команды, можно подготовить подробное техническое задание.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {SERVICE_SCOPES.map((item) => (
+                <article
+                  key={item.title}
+                  className="rounded-2xl border border-line bg-surface p-5 shadow-[0_12px_45px_rgba(27,27,25,0.045)] sm:p-6"
+                >
+                  <h3 className="text-[15px] font-semibold text-ink">
+                    {item.title}
+                  </h3>
+                  <p className="mt-2 text-[13px] leading-relaxed text-muted">
+                    {item.text}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-12 grid gap-5 rounded-2xl border border-line bg-[radial-gradient(circle_at_8%_0%,rgba(180,83,9,0.14),transparent_30%),var(--color-surface)] p-6 sm:p-8 lg:grid-cols-[0.95fr_1.05fr]">
+            <div>
+              <p className="eyebrow text-faint">результат</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+                Что вы получаете после настройки SEO
+              </h2>
+              <p className="mt-3 text-[14px] leading-relaxed text-muted">
+                Цель работы — не просто “поставить галочки”, а убрать реальные
+                препятствия для поиска: страницы должны открываться, быть
+                понятными, каноническими, связанными внутренними ссылками и
+                корректно описанными в мета-данных.
+              </p>
+            </div>
+            <ul className="grid gap-3">
+              {RESULT_ITEMS.map((item) => (
+                <li
+                  key={item}
+                  className="flex gap-3 rounded-xl border border-line bg-paper/75 p-4 text-[13px] leading-relaxed text-muted"
+                >
+                  <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-positive" />
+                  <span>{item}</span>
                 </li>
               ))}
             </ul>

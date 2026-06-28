@@ -16,13 +16,13 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Главная", match: (p) => p === "/" },
   { href: "/audit", label: "Аудит", match: (p) => Boolean(p?.startsWith("/audit")) },
   { href: "/services", label: "Услуги", match: (p) => Boolean(p?.startsWith("/services")) },
+  { href: "/knowledge", label: "База знаний", match: (p) => Boolean(p?.startsWith("/knowledge")) },
   { href: "/settings", label: "Настройки", match: (p) => Boolean(p?.startsWith("/settings")) },
 ];
 
 // Только в мобильном меню: информационные разделы. В десктопной шапке
 // оставляем основные продуктовые ссылки, чтобы не перегружать верхнюю навигацию.
 const MOBILE_INFO_ITEMS: { href: string; label: string }[] = [
-  { href: "/knowledge", label: "База знаний" },
   { href: "/about", label: "О сервисе" },
   { href: "/contacts", label: "Контакты" },
   { href: "/privacy", label: "Политика конфиденциальности" },

@@ -34,6 +34,29 @@ const TWITTER_CREATOR: string | undefined = undefined;
 // он сам читает NEXT_PUBLIC_YANDEX_METRIKA_ID и грузит счётчик только
 // после явного согласия пользователя.
 
+const SITE_NAVIGATION = [
+  { name: "Главная", url: `${SITE_URL}/` },
+  { name: "Аудит", url: `${SITE_URL}/audit` },
+  { name: "Услуги", url: `${SITE_URL}/services` },
+  { name: "База знаний", url: `${SITE_URL}/knowledge` },
+  { name: "Контакты", url: `${SITE_URL}/contacts` },
+] as const;
+
+function buildNavigationStructuredData() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "@id": `${SITE_URL}/#site-navigation`,
+    name: "Основные разделы Seofriendly",
+    itemListElement: SITE_NAVIGATION.map((item, index) => ({
+      "@type": "SiteNavigationElement",
+      position: index + 1,
+      name: item.name,
+      url: item.url,
+    })),
+  };
+}
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   applicationName: SITE_NAME,
@@ -115,12 +138,20 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const navigationStructuredData = buildNavigationStructuredData();
+
   return (
     <html
       lang="ru"
       className={`${plexSans.variable} ${plexMono.variable}`}
     >
       <body className="bg-paper text-ink antialiased">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(navigationStructuredData),
+          }}
+        />
         <AppBar />
         {children}
         <Footer />

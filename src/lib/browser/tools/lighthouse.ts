@@ -21,8 +21,10 @@ export async function runLighthouse(
   url: string,
   formFactor: LighthouseFormFactor = "mobile"
 ): Promise<Record<string, unknown>> {
-  const MAX_OPPORTUNITIES = 8;
-  const MAX_DIAGNOSTICS = 8;
+  const MAX_OPPORTUNITIES = 20;
+  const MAX_DIAGNOSTICS = 20;
+  const MAX_FAILED_AUDITS = 35;
+  const MAX_DETAIL_ITEMS = 5;
   const METRIC_IDS = [
     "first-contentful-paint",
     "largest-contentful-paint",
@@ -247,17 +249,70 @@ export async function runLighthouse(
       };
     }
 
+    type DetailItem = Record<string, string | number | boolean | null>;
     type SampleEntry = {
       id: string;
       title: string;
+      description?: string;
       displayValue?: string;
       score: number | null;
+      scoreDisplayMode?: string;
       numericValue?: number;
+      numericUnit?: string;
       detailsType?: string;
+      savings?: {
+        wastedMs?: number;
+        wastedBytes?: number;
+      };
+      items?: DetailItem[];
+    };
+
+    const isPrimitiveDetailValue = (
+      value: unknown
+    ): value is string | number | boolean | null =>
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean";
+
+    const normalizeDetailValue = (value: unknown): string | number | boolean | null | undefined => {
+      if (isPrimitiveDetailValue(value)) return value;
+      if (!value || typeof value !== "object") return undefined;
+      const record = value as Record<string, unknown>;
+      const candidate =
+        record.url ??
+        record.value ??
+        record.text ??
+        record.label ??
+        record.nodeLabel ??
+        record.selector ??
+        record.snippet;
+      return isPrimitiveDetailValue(candidate) ? candidate : undefined;
+    };
+
+    const summarizeDetailsItems = (details: unknown): DetailItem[] | undefined => {
+      if (!details || typeof details !== "object") return undefined;
+      const record = details as Record<string, unknown>;
+      if (!Array.isArray(record.items)) return undefined;
+      const items: DetailItem[] = [];
+      for (const rawItem of record.items.slice(0, MAX_DETAIL_ITEMS)) {
+        if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) continue;
+        const item: DetailItem = {};
+        for (const [key, value] of Object.entries(rawItem as Record<string, unknown>)) {
+          const normalized = normalizeDetailValue(value);
+          if (normalized !== undefined) item[key] = normalized;
+        }
+        if (Object.keys(item).length > 0) items.push(item);
+      }
+      return items.length > 0 ? items : undefined;
     };
 
     const opportunities: SampleEntry[] = [];
     const diagnostics: SampleEntry[] = [];
+    const failedAudits: SampleEntry[] = [];
+    const manualAudits: SampleEntry[] = [];
+    const notApplicableAudits: SampleEntry[] = [];
+    let passedAuditCount = 0;
     const audits = lhr.audits || {};
     for (const [id, audit] of Object.entries(audits)) {
       const detailsType =
@@ -273,18 +328,54 @@ export async function runLighthouse(
       const entry: SampleEntry = {
         id,
         title: audit.title,
+        description: audit.description,
         displayValue: audit.displayValue,
         score: typeof audit.score === "number" ? audit.score : null,
+        scoreDisplayMode: audit.scoreDisplayMode,
         numericValue:
           typeof audit.numericValue === "number" ? audit.numericValue : undefined,
+        numericUnit: audit.numericUnit,
       };
       if (detailsType) entry.detailsType = detailsType;
+      const savings: SampleEntry["savings"] = {};
+      if (typeof audit.details === "object" && audit.details) {
+        const details = audit.details as { overallSavingsMs?: unknown; overallSavingsBytes?: unknown };
+        if (typeof details.overallSavingsMs === "number") savings.wastedMs = details.overallSavingsMs;
+        if (typeof details.overallSavingsBytes === "number") savings.wastedBytes = details.overallSavingsBytes;
+        const items = summarizeDetailsItems(audit.details);
+        if (items) entry.items = items;
+      }
+      if (Object.keys(savings).length > 0) entry.savings = savings;
       if (isOpportunity) {
         if (opportunities.length < MAX_OPPORTUNITIES) opportunities.push(entry);
       } else if (isInformative) {
         if (diagnostics.length < MAX_DIAGNOSTICS) diagnostics.push(entry);
       }
+      if (audit.scoreDisplayMode === "manual") {
+        if (manualAudits.length < MAX_FAILED_AUDITS) manualAudits.push(entry);
+      } else if (audit.scoreDisplayMode === "notApplicable") {
+        if (notApplicableAudits.length < MAX_FAILED_AUDITS) notApplicableAudits.push(entry);
+      } else if (typeof audit.score === "number" && audit.score >= 0.9) {
+        passedAuditCount += 1;
+      } else if (
+        typeof audit.score === "number" &&
+        audit.score < 0.9 &&
+        failedAudits.length < MAX_FAILED_AUDITS
+      ) {
+        failedAudits.push(entry);
+      }
     }
+
+    const categoryAuditRefs = Object.fromEntries(
+      Object.entries(lhr.categories || {}).map(([id, category]) => [
+        id,
+        (category.auditRefs || []).slice(0, 60).map((ref) => ({
+          id: ref.id,
+          weight: ref.weight,
+          group: ref.group,
+        })),
+      ])
+    );
 
     const result: Record<string, unknown> = {
       url,
@@ -297,8 +388,13 @@ export async function runLighthouse(
       userAgent: lhr.userAgent,
       categories,
       metrics,
+      categoryAuditRefs,
       opportunities,
       diagnostics,
+      failedAudits,
+      manualAudits,
+      notApplicableAudits,
+      passedAuditCount,
       runWarnings: lhr.runWarnings || [],
     };
     log?.("debug", "Lighthouse run finished", {
