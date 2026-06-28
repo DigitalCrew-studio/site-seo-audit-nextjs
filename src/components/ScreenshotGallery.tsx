@@ -6,7 +6,14 @@ import { Image as ImageIcon, X } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import { loadAuditImage } from "@/lib/audit-image-store";
 import type { ScreenshotEntry } from "@/lib/types";
-import { Badge, Panel, PanelBody, PanelHeader } from "@/components/ui";
+import {
+  CountPill,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  StatusPill,
+  type PillTone,
+} from "@/components/ui";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -213,10 +220,45 @@ function Lightbox({
   );
 }
 
+function pillToneForStatus(status: string): PillTone {
+  switch (status) {
+    case "running":
+      return "accent";
+    case "completed":
+      return "positive";
+    case "failed":
+      return "danger";
+    case "interrupted":
+    default:
+      return "muted";
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "running":
+      return "Идёт";
+    case "completed":
+      return "Готово";
+    case "failed":
+      return "Ошибка";
+    case "interrupted":
+    default:
+      return "Прервано";
+  }
+}
+
 export function ScreenshotGallery() {
-  const { screenshots } = useAuditStore(
-    useShallow((s) => ({ screenshots: s.screenshots }))
-  );
+  const { screenshots, running, activeSavedAuditId, savedAudits, isViewingSavedAudit } =
+    useAuditStore(
+      useShallow((s) => ({
+        screenshots: s.screenshots,
+        running: s.running,
+        activeSavedAuditId: s.activeSavedAuditId,
+        savedAudits: s.savedAudits,
+        isViewingSavedAudit: s.isViewingSavedAudit,
+      }))
+    );
   const [openId, setOpenId] = useState<string | null>(null);
 
   const openShot = useMemo(
@@ -234,7 +276,41 @@ export function ScreenshotGallery() {
       window.removeEventListener("open-screenshot", onOpen as EventListener);
   }, []);
 
+  const activeAudit = isViewingSavedAudit
+    ? savedAudits.find((entry) => entry.id === activeSavedAuditId)
+    : undefined;
+
+  const status: string = running
+    ? "running"
+    : activeAudit
+      ? activeAudit.status
+      : screenshots.length > 0
+        ? "completed"
+        : "interrupted";
+
+  const uniquePageCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const shot of screenshots) {
+      if (shot.url) set.add(shot.url);
+    }
+    return set.size;
+  }, [screenshots]);
+
   if (screenshots.length === 0) return null;
+
+  const metaPills = (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <StatusPill tone={pillToneForStatus(status)} pulse={status === "running"}>
+        {statusLabel(status)}
+      </StatusPill>
+      <CountPill>{`${screenshots.length} скриншотов`}</CountPill>
+      {uniquePageCount > 0 ? (
+        <CountPill>
+          {`${uniquePageCount} ${uniquePageCount === 1 ? "страница" : "страниц"}`}
+        </CountPill>
+      ) : null}
+    </span>
+  );
 
   return (
     <Panel>
@@ -242,11 +318,11 @@ export function ScreenshotGallery() {
         title={
           <span className="inline-flex items-center gap-2">
             <ImageIcon className="h-4 w-4 text-muted" />
-            Визуальные доказательства
+            Скриншоты страниц
           </span>
         }
-        description="Скриншоты страниц, сохранённые во время обхода сайта."
-        meta={<Badge tone="neutral">{screenshots.length}</Badge>}
+        description="Снимки страниц, сохранённые во время обхода сайта."
+        meta={metaPills}
       />
 
       <PanelBody>

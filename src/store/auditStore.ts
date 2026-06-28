@@ -27,9 +27,9 @@ const MAX_REPORT_IMAGES = 30;
 
 // ----- Saved audit (local history) limits -----
 export const MAX_SAVED_AUDITS = 20;
-export const MAX_SAVED_SCREENSHOTS_PER_AUDIT = 5;
-export const MAX_SAVED_REPORT_IMAGES_PER_AUDIT = 10;
-export const MAX_SAVED_LOG_ENTRIES_PER_AUDIT = 200;
+export const MAX_SAVED_SCREENSHOTS_PER_AUDIT = 12;
+export const MAX_SAVED_REPORT_IMAGES_PER_AUDIT = 20;
+export const MAX_SAVED_LOG_ENTRIES_PER_AUDIT = 500;
 const MAX_SUMMARY_CHARS = 220;
 const MAX_REPORT_CHARS_PER_AUDIT = 60_000;
 const MAX_REPORT_IMAGE_BYTES_PER_AUDIT = 4_000_000;
@@ -115,6 +115,10 @@ export type SavedAudit = {
   logs: LogEntry[];
   error?: string;
   summary?: string;
+  logCount: number;
+  screenshotCount: number;
+  reportImageCount: number;
+  durationMs?: number;
 };
 
 type AuditState = {
@@ -132,12 +136,22 @@ type AuditState = {
   reportImages: ReportImageEntry[];
   report: string;
   reportOpen: boolean;
-  error: string;
+  // Error for the currently active workspace. `liveError` is the error from
+  // the in-flight or just-finished run that the user is looking at.
+  // `savedError` is the error of the currently loaded saved audit, used to
+  // surface archive errors in the workspace details panel instead of the form.
+  liveError: string;
+  savedError: string;
   // ----- debug mode (toggleable live during an audit) -----
   debugMode: boolean;
   // ----- saved audits (local history) -----
   savedAudits: SavedAudit[];
   activeSavedAuditId?: string;
+  // True when the workspace is currently mirroring a saved audit (either
+  // historical or a live run viewed through the history). Drives the "Ошибка"
+  // banner on top of the audit form: the form only shows liveError when the
+  // workspace is not in saved mode.
+  isViewingSavedAudit: boolean;
 
   // ----- actions -----
   hydrate: () => void;
@@ -151,6 +165,8 @@ type AuditState = {
   loadSavedAudit: (id: string) => void;
   cancelBackgroundRun: () => void;
   deleteSavedAudit: (id: string) => void;
+  deleteSavedAuditsByDomain: (domain: string) => void;
+  dismissSavedError: () => void;
 };
 
 function readSavedAuditsFromStorage(): SavedAudit[] {
@@ -170,6 +186,26 @@ function readSavedAuditsFromStorage(): SavedAudit[] {
           typeof entry.url === "string" &&
           typeof entry.createdAt === "string"
         );
+      })
+      .map((entry) => {
+        const logsCount = Array.isArray(entry.logs) ? entry.logs.length : 0;
+        return {
+          ...entry,
+          logCount:
+            typeof entry.logCount === "number" ? entry.logCount : logsCount,
+          screenshotCount:
+            typeof entry.screenshotCount === "number"
+              ? entry.screenshotCount
+              : Array.isArray(entry.screenshots)
+                ? entry.screenshots.length
+                : 0,
+          reportImageCount:
+            typeof entry.reportImageCount === "number"
+              ? entry.reportImageCount
+              : Array.isArray(entry.reportImages)
+                ? entry.reportImages.length
+                : 0,
+        };
       })
       .slice(0, MAX_SAVED_AUDITS);
   } catch {
@@ -231,12 +267,12 @@ function collectImageIds(audit: SavedAudit): string[] {
 
 function isUsableForStatus(
   status: SavedAuditStatus,
-  state: { error: string; logs: LogEntry[]; report: string }
+  state: { liveError: string; logs: LogEntry[]; report: string }
 ): boolean {
   if (status === "running") return true;
   if (status === "completed") return Boolean(state.report.trim());
   if (status === "failed")
-    return Boolean(state.error.trim()) || state.logs.length > 0 || state.report.trim().length > 0;
+    return Boolean(state.liveError.trim()) || state.logs.length > 0 || state.report.trim().length > 0;
   return state.logs.length > 0 || state.report.trim().length > 0;
 }
 
@@ -321,6 +357,11 @@ function buildSavedAuditSnapshot(
       ? state.savedAudits.find((entry) => entry.id === state.activeSavedAuditId)
       : undefined;
 
+  const startedAt = existing?.createdAt ? new Date(existing.createdAt).getTime() : null;
+  const finishedAt = status === "running" ? null : new Date(nowStamp).getTime();
+  const durationMs =
+    startedAt && finishedAt && finishedAt > startedAt ? finishedAt - startedAt : existing?.durationMs;
+
   return {
     id: existing?.id ?? randomId(),
     url,
@@ -334,8 +375,12 @@ function buildSavedAuditSnapshot(
     reportImages,
     screenshots,
     logs,
-    error: state.error || undefined,
+    error: state.liveError || undefined,
     summary: summarizeReport(report),
+    logCount: logs.length,
+    screenshotCount: screenshots.length,
+    reportImageCount: reportImages.length,
+    durationMs,
   };
 }
 
@@ -426,17 +471,29 @@ export const useAuditStore = create<AuditState>((set, get) => {
     set((s) => {
       const audit = s.savedAudits.find((entry) => entry.id === currentRunAuditId);
       if (!audit) return {};
+      const startedAt = new Date(audit.createdAt).getTime();
+      const finishedAt = new Date(nowIso()).getTime();
+      const durationMs =
+        Number.isFinite(startedAt) &&
+        Number.isFinite(finishedAt) &&
+        finishedAt > startedAt
+          ? finishedAt - startedAt
+          : audit.durationMs;
       const updated: SavedAudit = {
         ...audit,
         status,
         updatedAt: nowIso(),
+        durationMs,
+        logCount: audit.logs.length,
+        screenshotCount: audit.screenshots.length,
+        reportImageCount: audit.reportImages.length,
       };
       if (patch.report !== undefined) {
         updated.report = patch.report;
         updated.summary = summarizeReport(patch.report) ?? audit.summary;
       }
-      if (patch.error !== undefined) {
-        updated.error = patch.error || undefined;
+      if (patch.liveError !== undefined) {
+        updated.error = patch.liveError || undefined;
       }
       const without = s.savedAudits.filter(
         (entry) => entry.id !== currentRunAuditId
@@ -473,10 +530,12 @@ export const useAuditStore = create<AuditState>((set, get) => {
     reportImages: [],
     report: "",
     reportOpen: false,
-    error: "",
+    liveError: "",
+    savedError: "",
     debugMode: false,
     savedAudits: [],
     activeSavedAuditId: undefined,
+    isViewingSavedAudit: false,
 
     setLanguage: (l) => {
       set({ language: l });
@@ -494,6 +553,8 @@ export const useAuditStore = create<AuditState>((set, get) => {
 
     setReportOpen: (open) => set({ reportOpen: open }),
     setDebugMode: (v) => set({ debugMode: v }),
+
+    dismissSavedError: () => set({ savedError: "" }),
 
     hydrate: () => {
       if (typeof window === "undefined") return;
@@ -539,7 +600,9 @@ export const useAuditStore = create<AuditState>((set, get) => {
         reportImages: [],
         report: "",
         reportOpen: false,
-        error: "",
+        liveError: "",
+        savedError: "",
+        isViewingSavedAudit: false,
         activeSavedAuditId: undefined,
       });
     },
@@ -623,7 +686,9 @@ export const useAuditStore = create<AuditState>((set, get) => {
         reportImages,
         report: audit.report,
         reportOpen: false,
-        error: audit.error ?? "",
+        liveError: "",
+        savedError: audit.error ?? "",
+        isViewingSavedAudit: !switchingToLiveRun,
         url: audit.url,
         language: audit.language,
         activeSavedAuditId: audit.id,
@@ -644,6 +709,33 @@ export const useAuditStore = create<AuditState>((set, get) => {
           savedAudits: next,
           activeSavedAuditId:
             s.activeSavedAuditId === id ? undefined : s.activeSavedAuditId,
+        };
+      });
+    },
+
+    deleteSavedAuditsByDomain: (domain) => {
+      set((s) => {
+        const target = domain.toLowerCase();
+        const removed = s.savedAudits.filter(
+          (entry) => (entry.domain || "").toLowerCase() === target
+        );
+        if (removed.length === 0) return {};
+        const removedIds = new Set(removed.map((entry) => entry.id));
+        const next = s.savedAudits.filter((entry) => !removedIds.has(entry.id));
+        writeSavedAuditsToStorage(next);
+        // Best-effort IDB cleanup for all removed audits.
+        const imageIds: string[] = [];
+        for (const entry of removed) {
+          for (const id of collectImageIds(entry)) imageIds.push(id);
+        }
+        if (imageIds.length > 0) void deleteAuditImages(imageIds);
+        const clearedActiveId =
+          s.activeSavedAuditId && removedIds.has(s.activeSavedAuditId)
+            ? undefined
+            : s.activeSavedAuditId;
+        return {
+          savedAudits: next,
+          activeSavedAuditId: clearedActiveId,
         };
       });
     },
@@ -677,7 +769,9 @@ export const useAuditStore = create<AuditState>((set, get) => {
         backgroundRunActive: false,
         report: "",
         reportOpen: false,
-        error: "",
+        liveError: "",
+        savedError: "",
+        isViewingSavedAudit: false,
         logs: [],
         screenshots: [],
         reportImages: [],
@@ -706,12 +800,18 @@ export const useAuditStore = create<AuditState>((set, get) => {
       // because the in-memory `savedAudits` list is the truth we read from
       // to keep this self-consistent (e.g. after `pruneOrphans` trimming).
       const appendToRunningSaved = (log: LogEntry) =>
-        updateRunningSavedAudit((audit) => ({
-          ...audit,
-          logs: [...audit.logs, log].slice(-MAX_SAVED_LOG_ENTRIES_PER_AUDIT),
-          status: "running",
-          updatedAt: nowIso(),
-        }));
+        updateRunningSavedAudit((audit) => {
+          const nextLogs = [...audit.logs, log].slice(
+            -MAX_SAVED_LOG_ENTRIES_PER_AUDIT
+          );
+          return {
+            ...audit,
+            logs: nextLogs,
+            logCount: nextLogs.length,
+            status: "running",
+            updatedAt: nowIso(),
+          };
+        });
 
       try {
         const res = await fetch("/api/audit", {
@@ -831,19 +931,25 @@ export const useAuditStore = create<AuditState>((set, get) => {
               profile: p.profile,
               viewport: p.viewport,
             };
-            updateRunningSavedAudit((audit) => ({
-              ...audit,
-              screenshots: [
+            updateRunningSavedAudit((audit) => {
+              const nextScreenshots = [
                 ...audit.screenshots,
                 toSavedScreenshotMeta(nextShot),
-              ].slice(-MAX_SAVED_SCREENSHOTS_PER_AUDIT),
-              reportImages: [
+              ].slice(-MAX_SAVED_SCREENSHOTS_PER_AUDIT);
+              const nextReportImages = [
                 ...audit.reportImages,
                 toSavedImageMeta(reportImage),
-              ].slice(-MAX_SAVED_REPORT_IMAGES_PER_AUDIT),
-              status: "running",
-              updatedAt: nowIso(),
-            }));
+              ].slice(-MAX_SAVED_REPORT_IMAGES_PER_AUDIT);
+              return {
+                ...audit,
+                screenshots: nextScreenshots,
+                reportImages: nextReportImages,
+                screenshotCount: nextScreenshots.length,
+                reportImageCount: nextReportImages.length,
+                status: "running",
+                updatedAt: nowIso(),
+              };
+            });
             if (isViewingLiveRun()) {
               set((s) => ({
                 screenshots: [...s.screenshots, nextShot].slice(-MAX_SCREENSHOTS),
@@ -883,14 +989,19 @@ export const useAuditStore = create<AuditState>((set, get) => {
               takenAt: p.takenAt,
               storage: "remote",
             };
-            updateRunningSavedAudit((audit) => ({
-              ...audit,
-              reportImages: [...audit.reportImages, toSavedImageMeta(next)].slice(
-                -MAX_SAVED_REPORT_IMAGES_PER_AUDIT
-              ),
-              status: "running",
-              updatedAt: nowIso(),
-            }));
+            updateRunningSavedAudit((audit) => {
+              const nextReportImages = [
+                ...audit.reportImages,
+                toSavedImageMeta(next),
+              ].slice(-MAX_SAVED_REPORT_IMAGES_PER_AUDIT);
+              return {
+                ...audit,
+                reportImages: nextReportImages,
+                reportImageCount: nextReportImages.length,
+                status: "running",
+                updatedAt: nowIso(),
+              };
+            });
             if (isViewingLiveRun()) {
               set((s) => ({
                 reportImages: [...s.reportImages, next].slice(-MAX_REPORT_IMAGES),
@@ -904,7 +1015,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
             const log: LogEntry = { type: "error", message: p.message, time: now() };
             appendToRunningSaved(log);
             if (isViewingLiveRun()) addLog(log);
-            persistTerminalSnapshot({ error: p.message }, "failed");
+            persistTerminalSnapshot({ liveError: p.message }, "failed");
           },
           onDone: (p) => {
             if (runId !== id) return;
@@ -931,7 +1042,7 @@ export const useAuditStore = create<AuditState>((set, get) => {
           const log: LogEntry = { type: "error", message: msg, time: now() };
           appendToRunningSaved(log);
           if (isViewingLiveRun()) addLog(log);
-          persistTerminalSnapshot({ error: msg }, "failed");
+          persistTerminalSnapshot({ liveError: msg }, "failed");
         }
       } finally {
         if (runId === id) {

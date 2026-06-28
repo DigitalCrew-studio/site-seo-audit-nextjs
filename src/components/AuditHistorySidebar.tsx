@@ -1,21 +1,20 @@
 "use client";
 
-import type { ComponentProps, MouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
-  FileClock,
-  Plus,
-  Trash2,
-  Globe2,
-  Radio,
-  Square,
   ChevronDown,
   ChevronRight,
+  FileClock,
+  MoreHorizontal,
+  Plus,
+  Square,
+  Trash2,
 } from "lucide-react";
 import { useAuditStore } from "@/store/auditStore";
 import type { SavedAudit, SavedAuditStatus } from "@/store/auditStore";
-import { Badge, Panel } from "@/components/ui";
+import { Panel } from "@/components/ui";
 
 const LOCALE = "ru-RU";
 
@@ -56,56 +55,66 @@ function statusLabel(status: SavedAuditStatus): string {
   }
 }
 
-function languageLabel(language: SavedAudit["language"]): string {
-  return language === "ru" ? "RU" : "EN";
-}
-
-function statusTone(status: SavedAuditStatus): ComponentProps<typeof Badge>["tone"] {
+function statusDotClass(status: SavedAuditStatus): string {
   switch (status) {
     case "running":
-      return "accent";
+      return "bg-accent";
     case "completed":
-      return "positive";
+      return "bg-positive";
     case "failed":
-      return "danger";
+      return "bg-red-500";
     case "interrupted":
-      return "neutral";
+    default:
+      return "bg-faint";
   }
 }
 
-function displayUrl(audit: SavedAudit): string {
-  return audit.domain || audit.title || audit.url;
+function statusTextClass(status: SavedAuditStatus): string {
+  switch (status) {
+    case "running":
+      return "text-accent";
+    case "completed":
+      return "text-positive";
+    case "failed":
+      return "text-red-700";
+    case "interrupted":
+    default:
+      return "text-faint";
+  }
 }
 
-function ConfirmDelete({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: (e: MouseEvent) => void;
-  onConfirm: (e: MouseEvent) => void;
-}) {
+type MetaItem = { text: string; tone?: "muted" | "status"; status?: SavedAuditStatus };
+
+function JoinedMeta({ items }: { items: MetaItem[] }) {
+  const visible = items.filter((item): item is MetaItem => Boolean(item.text));
+  if (visible.length === 0) return null;
   return (
-    <span
-      role="group"
-      className="ml-1 inline-flex shrink-0 items-center gap-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-muted transition hover:border-line-strong hover:text-ink"
-      >
-        Отмена
-      </button>
-      <button
-        type="button"
-        onClick={onConfirm}
-        className="rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 transition hover:bg-red-100"
-      >
-        Удалить
-      </button>
+    <span className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] text-faint">
+      {visible.map((item, i) => {
+        const toneClass =
+          item.tone === "status" && item.status
+            ? statusTextClass(item.status)
+            : undefined;
+        return (
+          <Fragment key={`${item.text}-${i}`}>
+            {i > 0 ? <span aria-hidden="true">·</span> : null}
+            <span className={toneClass}>{item.text}</span>
+          </Fragment>
+        );
+      })}
     </span>
   );
+}
+
+function formatDuration(ms?: number): string | undefined {
+  if (!ms || ms <= 0) return undefined;
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}с`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m < 60) return `${m}м ${s}с`;
+  const h = Math.floor(m / 60);
+  return `${h}ч ${m % 60}м`;
 }
 
 function SavedAuditCard({
@@ -123,18 +132,26 @@ function SavedAuditCard({
   onDelete: (id: string) => void;
   onStopRun: (id: string) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-
-  useEffect(() => {
-    if (!confirming) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setConfirming(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirming]);
-
   const isLiveRun = audit.status === "running";
+  const hasError = Boolean(audit.error);
+  const logCount = audit.logCount ?? audit.logs.length;
+  const screenshotCount = audit.screenshotCount ?? audit.screenshots.length;
+  const reportImageCount = audit.reportImageCount ?? audit.reportImages.length;
+  const duration = formatDuration(audit.durationMs);
+
+  const metaItems: MetaItem[] = [
+    { text: formatDateTime(audit.updatedAt) },
+    ...(duration ? [{ text: duration }] : []),
+    ...(logCount ? [{ text: `${logCount} логов` }] : []),
+    ...(screenshotCount + reportImageCount > 0
+      ? [{ text: `${screenshotCount + reportImageCount} изобр.` }]
+      : []),
+    {
+      text: statusLabel(audit.status),
+      tone: "status",
+      status: audit.status,
+    },
+  ];
 
   return (
     <li>
@@ -148,96 +165,161 @@ function SavedAuditCard({
             onOpen(audit.id);
           }
         }}
-        className={`group flex w-full cursor-pointer flex-col gap-1.5 rounded-lg border bg-surface px-3 py-2.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/15 ${
+        className={`group flex w-full cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition focus:outline-none focus-visible:ring-1 focus-visible:ring-ink/20 ${
           isActive
-            ? "border-ink/40 shadow-[0_1px_0_0_rgba(27,27,25,0.06)]"
-            : isLiveRunInBackground
-              ? "border-accent/30 ring-1 ring-accent/15"
-              : "border-line hover:border-line-strong"
+            ? "bg-paper"
+            : "hover:bg-paper/60"
         }`}
       >
-        <div className="flex items-start gap-2">
+        <div className="flex items-center gap-2">
           <span
-            className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted ${
-              isLiveRun ? "bg-accent-soft text-accent" : "bg-paper"
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(audit.status)} ${
+              isLiveRun ? "animate-pulse" : ""
             }`}
+            aria-hidden="true"
+          />
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink"
+            title={audit.url}
           >
-            {isLiveRun ? (
-              <Radio className="h-3.5 w-3.5" />
-            ) : (
-              <Globe2 className="h-3.5 w-3.5" />
-            )}
+            {audit.domain || audit.title || audit.url}
           </span>
-          <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-[13px] font-medium text-ink"
-              title={audit.url}
-            >
-              {displayUrl(audit)}
-            </p>
-            <p className="mt-0.5 font-mono text-[11px] text-faint">
-              {formatDateTime(audit.updatedAt)} · {languageLabel(audit.language)}
-            </p>
-          </div>
-          {confirming ? (
-            <ConfirmDelete
-              onCancel={(e) => {
-                e.stopPropagation();
-                setConfirming(false);
-              }}
-              onConfirm={(e) => {
-                e.stopPropagation();
-                setConfirming(false);
-                onDelete(audit.id);
-              }}
-            />
-          ) : isLiveRunInBackground ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStopRun(audit.id);
-              }}
-              title="Остановить аудит"
-              aria-label="Остановить аудит"
-              className="ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:bg-paper hover:text-red-700 focus:opacity-100"
-            >
-              <Square className="h-3 w-3 fill-current" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirming(true);
-              }}
-              title="Удалить аудит"
-              aria-label="Удалить аудит"
-              className="ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:bg-paper hover:text-red-700 focus:opacity-100"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <CardActions
+            isLiveRunInBackground={isLiveRunInBackground}
+            onStopRun={(e) => {
+              e.stopPropagation();
+              onStopRun(audit.id);
+            }}
+            onDelete={(e) => {
+              e.stopPropagation();
+              onDelete(audit.id);
+            }}
+          />
         </div>
-        <div className="flex items-center gap-1.5">
-          {isLiveRun ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent">
-              <span className="pulse-dot" />
-              {isLiveRunInBackground ? "В фоне" : "Идёт"}
-            </span>
-          ) : (
-            <Badge tone={statusTone(audit.status)} className="px-1.5 py-0.5">
-              {statusLabel(audit.status)}
-            </Badge>
-          )}
-          {audit.summary && (
-            <span className="truncate text-[12px] text-muted" title={audit.summary}>
-              {audit.summary}
-            </span>
-          )}
-        </div>
+        <JoinedMeta items={metaItems} />
+        {hasError && audit.error ? (
+          <p
+            className="truncate text-[11px] text-red-700/80"
+            title={audit.error}
+          >
+            {audit.error}
+          </p>
+        ) : null}
       </div>
     </li>
+  );
+}
+
+function CardActions({
+  isLiveRunInBackground,
+  onStopRun,
+  onDelete,
+}: {
+  isLiveRunInBackground: boolean;
+  onStopRun: (e: MouseEvent) => void;
+  onDelete: (e: MouseEvent) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen && !confirming) return;
+    const onDoc = (e: globalThis.MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-card-actions]")) return;
+      setMenuOpen(false);
+      setConfirming(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen, confirming]);
+
+  if (confirming) {
+    return (
+      <span
+        data-card-actions
+        className="ml-1 inline-flex shrink-0 items-center gap-1"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(false);
+          }}
+          className="rounded px-1.5 py-0.5 text-[10px] text-muted hover:text-ink"
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(false);
+            onDelete(e);
+          }}
+          className="rounded px-1.5 py-0.5 text-[10px] text-red-700 hover:text-red-800"
+        >
+          Удалить
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      data-card-actions
+      className="relative ml-1 shrink-0"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setMenuOpen((v) => !v);
+        }}
+        aria-label="Действия"
+        className="inline-flex h-5 w-5 items-center justify-center rounded text-faint opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:text-ink"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      {menuOpen ? (
+        <span
+          role="menu"
+          className="absolute right-0 top-full z-20 mt-1 flex min-w-[140px] flex-col rounded-md border border-line bg-surface py-1 text-[12px] shadow-md"
+        >
+          {isLiveRunInBackground ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onStopRun(e);
+              }}
+              className="flex items-center gap-2 px-2.5 py-1.5 text-left text-ink-soft hover:bg-paper"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              Остановить
+            </button>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(false);
+              setConfirming(true);
+            }}
+            className="flex items-center gap-2 px-2.5 py-1.5 text-left text-red-700 hover:bg-paper"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Удалить
+          </button>
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -246,72 +328,126 @@ function GroupSection({
   count,
   summary,
   expanded,
-  forcedExpanded,
   onToggle,
+  onDeleteAll,
   children,
 }: {
   label: string;
   count: number;
-  summary: { status: SavedAuditStatus; label: string };
+  summary: {
+    status: SavedAuditStatus;
+    failedCount: number;
+    runningCount: number;
+  };
   expanded: boolean;
-  forcedExpanded: boolean;
   onToggle: () => void;
+  onDeleteAll: () => void;
   children: React.ReactNode;
 }) {
-  const isOpen = expanded || forcedExpanded;
-  const Chevron = isOpen ? ChevronDown : ChevronRight;
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const onDoc = (e: globalThis.MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-group-actions]")) return;
+      setConfirming(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [confirming]);
+
+  const summaryParts: string[] = [];
+  summaryParts.push(`${count}`);
+  if (summary.runningCount > 0) summaryParts.push(`${summary.runningCount} идёт`);
+  if (summary.failedCount > 0) summaryParts.push(`${summary.failedCount} ош.`);
+
   return (
-    <li className="rounded-lg border border-line bg-surface/40">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        disabled={forcedExpanded}
-        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${
-          forcedExpanded
-            ? "cursor-default"
-            : "hover:bg-paper focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/15"
-        }`}
-      >
-        <Chevron
-          className={`h-3.5 w-3.5 shrink-0 text-muted transition ${
-            forcedExpanded ? "opacity-70" : ""
-          }`}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">
-          {label}
+    <li>
+      <div className="group flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-muted transition hover:text-ink">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ink/20"
+        >
+          <Chevron className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate font-semibold uppercase tracking-wider">
+            {label}
+          </span>
+          <span className="shrink-0 font-mono text-[10px] text-faint">
+            {summaryParts.join(" · ")}
+          </span>
+        </button>
+        <span
+          data-group-actions
+          className="ml-1 inline-flex shrink-0 items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {confirming ? (
+            <>
+              <span className="text-[10px] text-faint">Удалить {count}?</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirming(false);
+                }}
+                className="rounded px-1.5 py-0.5 text-[10px] text-muted hover:text-ink"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirming(false);
+                  onDeleteAll();
+                }}
+                className="rounded px-1.5 py-0.5 text-[10px] text-red-700 hover:text-red-800"
+              >
+                Удалить
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirming(true);
+              }}
+              title={`Удалить все аудиты для ${label}`}
+              aria-label={`Удалить все аудиты для ${label}`}
+              className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-faint opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:text-red-700"
+            >
+              <Trash2 className="h-3 w-3" />
+              Удалить все
+            </button>
+          )}
         </span>
-        <Badge tone="neutral" className="px-1.5 py-0.5">
-          {count}
-        </Badge>
-        <Badge tone={statusTone(summary.status)} className="px-1.5 py-0.5">
-          {summary.label}
-        </Badge>
-      </button>
-      {isOpen ? (
-        <ul className="space-y-1.5 border-t border-line/70 px-2 py-2">
-          {children}
-        </ul>
-      ) : null}
+      </div>
+      {expanded ? <ul className="space-y-0.5 pb-1">{children}</ul> : null}
     </li>
   );
 }
 
-function summarizeGroup(audits: SavedAudit[]): {
+function summarizeGroup(
+  audits: SavedAudit[]
+): {
   status: SavedAuditStatus;
-  label: string;
+  failedCount: number;
+  runningCount: number;
 } {
-  if (audits.some((a) => a.status === "running")) {
-    return { status: "running", label: "Идёт" };
-  }
-  if (audits.some((a) => a.status === "failed")) {
-    return { status: "failed", label: "Ошибка" };
-  }
-  if (audits.some((a) => a.status === "interrupted")) {
-    return { status: "interrupted", label: "Прервано" };
-  }
-  return { status: "completed", label: "Готово" };
+  const sorted = [...audits].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+  const runningCount = audits.filter((a) => a.status === "running").length;
+  const failedCount = audits.filter((a) => a.status === "failed").length;
+  const latest = sorted[0];
+  const status: SavedAuditStatus = latest ? latest.status : "completed";
+  return { status, failedCount, runningCount };
 }
 
 export function AuditHistorySidebar() {
@@ -322,6 +458,7 @@ export function AuditHistorySidebar() {
     newAudit,
     loadSavedAudit,
     deleteSavedAudit,
+    deleteSavedAuditsByDomain,
     cancelBackgroundRun,
     hydrateSavedAudits,
   } = useAuditStore(
@@ -332,6 +469,7 @@ export function AuditHistorySidebar() {
       newAudit: s.newAudit,
       loadSavedAudit: s.loadSavedAudit,
       deleteSavedAudit: s.deleteSavedAudit,
+      deleteSavedAuditsByDomain: s.deleteSavedAuditsByDomain,
       cancelBackgroundRun: s.cancelBackgroundRun,
       hydrateSavedAudits: s.hydrateSavedAudits,
     }))
@@ -379,13 +517,6 @@ export function AuditHistorySidebar() {
     );
   }, [sorted]);
 
-  const activeGroupKey = useMemo(() => {
-    if (!activeSavedAuditId) return null;
-    const active = sorted.find((a) => a.id === activeSavedAuditId);
-    if (!active) return null;
-    return groupKeyForAudit(active) || "_";
-  }, [activeSavedAuditId, sorted]);
-
   const [collapsedKeys, setCollapsedKeys] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => {
     setCollapsedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -399,33 +530,34 @@ export function AuditHistorySidebar() {
 
   return (
     <Panel as="aside" className="flex h-full max-h-[calc(100vh-120px)] flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <div className="flex items-center gap-2">
-          <FileClock className="h-4 w-4 text-muted" />
-          <h2 className="text-sm font-semibold text-ink">Аудиты</h2>
+      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">
+          <FileClock className="h-3.5 w-3.5" />
+          История
           {groups.length > 0 ? (
-            <Badge tone="neutral">{groups.length}</Badge>
+            <span className="font-mono text-[10px] text-faint">
+              {groups.length}
+            </span>
           ) : null}
         </div>
         <button
           type="button"
           onClick={newAudit}
-          className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-paper px-2.5 py-1.5 text-[12px] font-medium text-ink-soft transition hover:border-ink/30 hover:text-ink"
+          className="inline-flex items-center gap-1 rounded text-[12px] text-muted transition hover:text-ink"
         >
           <Plus className="h-3.5 w-3.5" />
-          Новый аудит
+          Новый
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-2">
         {groups.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[13px] leading-relaxed text-muted">
-            История аудитов появится после первого запуска.
+          <p className="px-2 py-4 text-center text-[12px] text-faint">
+            История появится после первого запуска.
           </p>
         ) : (
           <ul className="space-y-2">
             {groups.map((group) => {
-              const isActiveGroup = group.key === activeGroupKey;
               const expanded = !collapsedKeys[group.key];
               const summary = summarizeGroup(group.audits);
               return (
@@ -435,8 +567,13 @@ export function AuditHistorySidebar() {
                   count={group.audits.length}
                   summary={summary}
                   expanded={expanded}
-                  forcedExpanded={isActiveGroup}
                   onToggle={() => toggleGroup(group.key)}
+                  onDeleteAll={() => {
+                    if (group.audits.length === 0) return;
+                    const domain =
+                      group.audits[0]?.domain || group.label || group.key;
+                    deleteSavedAuditsByDomain(domain);
+                  }}
                 >
                   {group.audits.map((audit) => (
                     <SavedAuditCard

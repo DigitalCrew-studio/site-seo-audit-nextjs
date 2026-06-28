@@ -42,3 +42,14 @@ export type { SwitchRowProps } from "./SwitchRow";
 
 export { Breadcrumbs } from "./Breadcrumbs";
 export type { BreadcrumbsProps, BreadcrumbItem } from "./Breadcrumbs";
+
+export {
+  StatusPill,
+  CountPill,
+  FilterPill,
+  PILL_TONE_BG,
+  PILL_TONE_BORDER,
+  PILL_TONE_TEXT,
+  PILL_TONE_TEXT_DOT,
+} from "./status-pill";
+export type { PillTone } from "./status-pill";

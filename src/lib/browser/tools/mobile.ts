@@ -531,7 +531,15 @@ export async function inspectViewportRendering(
     overflow: Number(evaluateData?.overflowAmount) || 0,
     fontIssues: Number(evaluateData?.fontIssueCount) || 0,
     tapIssues: Number(evaluateData?.tapIssueCount) || 0,
-    screenshot: screenshotBuffer ? screenshotBuffer.byteLength : 0,
+    screenshot: screenshotBuffer ? screenshotBuffer.byteLength : undefined,
+    screenshotStatus: screenshotBuffer
+      ? "captured"
+      : wantScreenshot
+        ? screenshotError
+          ? "failed"
+          : "notCaptured"
+        : "skipped",
+    screenshotSkippedReason: wantScreenshot ? undefined : "includeScreenshots=false",
   });
 
   return result;
@@ -634,7 +642,15 @@ export async function inspectResponsiveRendering(
         overflow: entry.overflowAmount,
         fontIssues: entry.fontIssueCount,
         tapIssues: entry.tapIssueCount,
-        screenshot: entry.screenshot ? (entry.screenshot as { bytes?: number }).bytes ?? 0 : 0,
+        screenshot: entry.screenshot ? (entry.screenshot as { bytes?: number }).bytes : undefined,
+        screenshotStatus: entry.screenshot
+          ? "captured"
+          : entry.screenshotError
+            ? "failed"
+            : wantScreenshots
+              ? "notCaptured"
+              : "skipped",
+        screenshotSkippedReason: wantScreenshots ? undefined : "includeScreenshots=false",
       }
     );
   }

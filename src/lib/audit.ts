@@ -72,6 +72,7 @@ const MAX_EVIDENCE_ERROR_CHARS = 200;
 const PREFLIGHT_SCREENSHOT_LIMIT = 30;
 const HOMEPAGE_RESPONSIVE_SCREENSHOT_COUNT = 4;
 const PAGE_SCREENSHOT_PROFILES = ["desktop", "mobile"] as const;
+const VISUAL_QA_SKIP_PATH_RE = /(?:^|\/)(?:robots\.txt|sitemap(?:-[^/]*)?\.xml|llms\.txt|settings|admin|login|logout|account|cart|checkout)(?:$|[/?#])/i;
 
 // Throttling for streamed model output. Emit a status/debug event at most
 // once per window so the UI gets visible progress without log spam.
@@ -959,6 +960,163 @@ function extractResultError(parsed: unknown): string | undefined {
   return undefined;
 }
 
+function pickRecordFields(
+  value: unknown,
+  fields: string[]
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (input[field] !== undefined) out[field] = input[field];
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function compactAuditEntries(value: unknown, limit: number): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, limit).map((entry) => {
+    const picked = pickRecordFields(entry, [
+      "id",
+      "title",
+      "description",
+      "displayValue",
+      "score",
+      "scoreDisplayMode",
+      "numericValue",
+      "numericUnit",
+      "detailsType",
+      "savings",
+    ]) ?? {};
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const items = (entry as { items?: unknown }).items;
+      if (Array.isArray(items) && items.length > 0) picked.items = items.slice(0, 2);
+    }
+    return picked;
+  });
+}
+
+function compactLighthouseResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const r = result as Record<string, unknown>;
+  return {
+    url: r.url,
+    finalUrl: r.finalUrl,
+    formFactor: r.formFactor,
+    requestedFormFactor: r.requestedFormFactor,
+    configPreset: r.configPreset,
+    fetchTime: r.fetchTime,
+    lighthouseVersion: r.lighthouseVersion,
+    categories: r.categories,
+    metrics: r.metrics,
+    opportunities: compactAuditEntries(r.opportunities, 8),
+    diagnostics: compactAuditEntries(r.diagnostics, 8),
+    failedAudits: compactAuditEntries(r.failedAudits, 12),
+    manualAudits: compactAuditEntries(r.manualAudits, 6),
+    notApplicableCount: Array.isArray(r.notApplicableAudits) ? r.notApplicableAudits.length : undefined,
+    passedAuditCount: r.passedAuditCount,
+    runWarnings: Array.isArray(r.runWarnings) ? r.runWarnings.slice(0, 5) : r.runWarnings,
+    error: r.error,
+    runtimeError: r.runtimeError,
+  };
+}
+
+function compactResponsiveResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const r = result as Record<string, unknown>;
+  const results = Array.isArray(r.results) ? r.results : [];
+  return {
+    url: r.url,
+    finalUrl: r.finalUrl,
+    summary: r.summary,
+    profiles: results.map((entry) => {
+      const picked = pickRecordFields(entry, [
+        "profile",
+        "url",
+        "finalUrl",
+        "status",
+        "responseTime",
+        "viewport",
+        "horizontalOverflow",
+        "overflowAmount",
+        "contentHeight",
+        "fontIssueCount",
+        "tapIssueCount",
+        "h1",
+        "primaryNav",
+        "aboveFoldLinks",
+        "issues",
+        "warnings",
+        "renderError",
+      ]) ?? {};
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        const screenshot = (entry as { screenshot?: unknown }).screenshot;
+        if (screenshot && typeof screenshot === "object" && !Array.isArray(screenshot)) {
+          picked.screenshot = pickRecordFields(screenshot, [
+            "mimeType",
+            "bytes",
+            "omitted",
+            "profile",
+            "viewport",
+            "source",
+          ]);
+        }
+      }
+      return picked;
+    }),
+  };
+}
+
+function compactCrawlResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const r = result as Record<string, unknown>;
+  const pages = Array.isArray(r.pages) ? r.pages : [];
+  return {
+    startUrl: r.startUrl,
+    startOrigin: r.startOrigin,
+    maxPages: r.maxPages,
+    visitedCount: r.visitedCount,
+    queuedCount: r.queuedCount,
+    skippedStaticCount: r.skippedStaticCount,
+    statusBuckets: r.statusBuckets,
+    pages: pages.slice(0, 20).map((page) => pickRecordFields(page, [
+      "url",
+      "finalUrl",
+      "status",
+      "title",
+      "metaDescriptionLength",
+      "metaDescriptionPresent",
+      "canonical",
+      "robotsMeta",
+      "xRobotsTag",
+      "h1Count",
+      "h1Sample",
+      "wordCount",
+      "internalLinkCount",
+      "jsonLdTypes",
+      "noindex",
+      "canonicalToOther",
+    ]) ?? {}),
+    duplicateTitles: r.duplicateTitles,
+    duplicateMetaDescriptions: r.duplicateMetaDescriptions,
+    missingTitle: r.missingTitle,
+    missingMetaDescription: r.missingMetaDescription,
+    missingH1: r.missingH1,
+    noindex: r.noindex,
+    canonicalToOther: r.canonicalToOther,
+    crawlErrors: r.crawlErrors,
+  };
+}
+
+function compactEvidenceResult(name: string, result: unknown): unknown {
+  if (name === "run_lighthouse") return compactLighthouseResult(result);
+  if (name === "inspect_responsive_rendering" || name === "inspect_mobile_rendering") {
+    return compactResponsiveResult(result);
+  }
+  if (name === "crawl_site_sample") return compactCrawlResult(result);
+  return result;
+}
+
 function buildEvidenceSummary(evidence: AuditEvidence): unknown {
   const summarizeEntry = (entry: ToolEvidence) => {
     const summary: Record<string, unknown> = {
@@ -975,9 +1133,10 @@ function buildEvidenceSummary(evidence: AuditEvidence): unknown {
         : entry.error;
     }
     if (entry.result !== undefined) {
+      const compactResult = compactEvidenceResult(entry.name, entry.result);
       let json: string | undefined;
       try {
-        json = JSON.stringify(entry.result);
+        json = JSON.stringify(compactResult);
       } catch {
         json = undefined;
       }
@@ -986,7 +1145,7 @@ function buildEvidenceSummary(evidence: AuditEvidence): unknown {
           ? LIGHTHOUSE_EVIDENCE_RESULT_MAX_BYTES
           : EVIDENCE_RESULT_MAX_BYTES;
         if (utf8Bytes(json) <= maxResultBytes) {
-          summary.result = entry.result;
+          summary.result = compactResult;
         } else {
           const { text, originalBytes } = safeTruncate(json, maxResultBytes);
           summary.result = {
@@ -1022,6 +1181,19 @@ function normalizedUrlKey(raw: string): string | undefined {
   }
 }
 
+function isVisualQaPageUrl(raw: string, targetOrigin?: string): boolean {
+  if (STATIC_ASSET_EXT_RE.test(raw)) return false;
+  try {
+    const url = new URL(raw);
+    if (targetOrigin && url.origin !== targetOrigin) return false;
+    if (VISUAL_QA_SKIP_PATH_RE.test(`${url.pathname}${url.search}`)) return false;
+    if (/\.(?:txt|xml|json|webmanifest)(?:$|[?#])/i.test(url.pathname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function buildPageScreenshotToolCalls(
   crawlResult: unknown,
   targetUrl: string
@@ -1054,16 +1226,11 @@ function buildPageScreenshotToolCalls(
       : typeof record.url === "string" && record.url.length > 0
         ? record.url
         : undefined;
-    if (!candidate || STATIC_ASSET_EXT_RE.test(candidate)) continue;
+    if (!candidate || !isVisualQaPageUrl(candidate, targetOrigin)) continue;
     const status = typeof record.status === "number" ? record.status : undefined;
     if (status !== undefined && (status < 200 || status >= 400)) continue;
     const key = normalizedUrlKey(candidate);
     if (!key || key === targetKey || seen.has(key)) continue;
-    try {
-      if (targetOrigin && new URL(candidate).origin !== targetOrigin) continue;
-    } catch {
-      continue;
-    }
     seen.add(key);
     urls.push(candidate);
     if (urls.length >= maxPages) break;
@@ -1292,10 +1459,12 @@ function shapeToolResult(
         const entry = item as Record<string, unknown>;
         if (entry.screenshot) {
           const replaced = stripScreenshot(entry.screenshot);
-          if (replaced) entry.screenshot = replaced;
+          if (replaced) {
+            entry.screenshot = replaced;
+            omittedScreenshot = true;
+          }
         }
       }
-      if (results.length > 0) omittedScreenshot = true;
     } else {
       if (r.screenshot) {
         const replaced = stripScreenshot(r.screenshot);
@@ -1307,6 +1476,7 @@ function shapeToolResult(
     }
   }
 
+  payload = compactEvidenceResult(name, payload);
   const json = JSON.stringify(payload);
   const cap = name === "get_rendered_text"
     ? MAX_TEXT_TOOL_RESULT_BYTES
@@ -1852,10 +2022,17 @@ async function runSingleModelRequest(
     }
     lastProgressAt = now;
     setPhase(mode === "final" ? `processing:final report (${chunkCount} chunks)` : `processing:streaming step ${step} (${chunkCount} chunks)`);
+    const toolCallCount = toolCalls.size;
+    const streamDescription =
+      content.length > 0
+        ? `${content.length}B content so far`
+        : toolCallCount > 0
+          ? `tool-call only so far (${toolCallCount} pending)`
+          : "waiting for content or tool calls";
     emit("status", {
       message: mode === "final"
-        ? `Final report streaming (${chunkCount} chunks, ${content.length}B content so far)...`
-        : `Processing step ${step} (${chunkCount} chunks, ${content.length}B content so far)...`,
+        ? `Final report streaming (${chunkCount} chunks, ${streamDescription})...`
+        : `Processing step ${step} (${chunkCount} chunks, ${streamDescription})...`,
       phase: mode === "final" ? "processing:final report" : `processing:streaming step ${step}`,
     });
   };
@@ -1972,6 +2149,7 @@ async function runSingleModelRequest(
     message: mode === "final" ? "Final report request finished" : `Processing request finished (step ${step})`,
     data: {
       mode,
+      responseKind: ordered.length > 0 && content.length === 0 ? "tool_calls_only" : "content",
       durationMs,
       firstChunkMs,
       chunks: chunkCount,
@@ -2206,12 +2384,88 @@ export async function runAudit({
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        emit("error", {
-          message: `Agent step ${agentStep} failed: ${msg}`,
-        });
         emit("debug", {
           message: "runAudit caught agent step error",
           data: { agentStep, error: msg, name: err instanceof Error ? err.name : undefined },
+        });
+        if (agentStep === 1) {
+          emit("status", {
+            message:
+              "Discovery step failed; retrying as a no-tool final report with compact evidence...",
+            phase: "processing:final report",
+          });
+          try {
+            const finalEvidenceSummary = buildEvidenceSummary(evidence);
+            const finalMessages: ChatCompletionMessageParam[] = [
+              buildSystemPrompt(skillText, language),
+              buildFinalEvidenceUserMessage(url, finalEvidenceSummary, language),
+            ];
+            const finalRequestBytes = approxBytes({ messages: finalMessages });
+            emit("debug", {
+              message: "Fallback final report request prepared",
+              data: { messages: finalMessages.length, requestBytes: finalRequestBytes },
+            });
+            const fallbackFinal = await runModelStep(
+              openai,
+              modelIds,
+              finalMessages,
+              agentStep,
+              "final",
+              finalRequestBytes,
+              PER_FINAL_MODEL_WAIT_MS,
+              MAX_FINAL_TOKENS,
+              signal,
+              emit,
+              setPhase
+            );
+            let finalReportContent = sanitizeFinalReport(fallbackFinal.content);
+            if (finalReportNeedsContinuation(finalReportContent, fallbackFinal.finishReason)) {
+              const continuationMessages = buildFinalContinuationMessages(language, finalReportContent);
+              const continuation = await runModelStep(
+                openai,
+                modelIds,
+                continuationMessages,
+                agentStep + 1,
+                "final",
+                approxBytes({ messages: continuationMessages }),
+                PER_FINAL_MODEL_WAIT_MS,
+                MAX_FINAL_TOKENS,
+                signal,
+                emit,
+                setPhase
+              );
+              const continuationText = sanitizeFinalReport(continuation.content);
+              if (continuationText.length > 0) {
+                finalReportContent = `${finalReportContent.trim()}\n\n${continuationText.trim()}`.trim();
+              }
+            }
+            const reportForDisplay = stripFinalReportEndMarker(finalReportContent);
+            if (isUsableFinalReport(reportForDisplay)) {
+              setPhase("report");
+              emit("status", { message: "Generating final report...", phase: "report" });
+              emit("done", { report: reportForDisplay });
+              reportDone = true;
+              return;
+            }
+            emit("debug", {
+              message: "Fallback final report was not usable",
+              data: {
+                contentBytes: finalReportContent.length,
+                hasEndMarker: hasFinalReportEndMarker(finalReportContent),
+              },
+            });
+          } catch (fallbackErr) {
+            emit("debug", {
+              message: "Fallback final report failed",
+              data: {
+                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+                name: fallbackErr instanceof Error ? fallbackErr.name : undefined,
+              },
+            });
+          }
+        }
+        emit("error", {
+          message: `Agent step ${agentStep} failed: ${msg}`,
         });
         return;
       }

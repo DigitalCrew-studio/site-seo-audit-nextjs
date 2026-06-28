@@ -5,7 +5,6 @@ import { AuditForm } from "@/components/AuditForm";
 import { AuditHistorySidebar } from "@/components/AuditHistorySidebar";
 import { AuditWorkspaceEmpty } from "@/components/AuditWorkspaceEmpty";
 import { ProcessLog } from "@/components/ProcessLog";
-import { ReportCard } from "@/components/ReportCard";
 import { ReportDialog } from "@/components/ReportDialog";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { Breadcrumbs, PageHeader } from "@/components/ui";
@@ -183,7 +182,6 @@ export default function AuditPage() {
               <AuditWorkspaceEmpty />
               <ProcessLog />
               <ScreenshotGallery />
-              <ReportCard />
             </div>
           </div>
         </div>
